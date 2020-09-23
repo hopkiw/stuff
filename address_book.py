@@ -15,19 +15,21 @@ entries = []
 #delete entry
 #edit entry
 
-#class Entry(object):
-#	def __init__(self, name, email):
-#		self.name = name
-#		self.email = email
+class Entry(object):
+	def __init__(self, name, email):
+		self.name = name
+		self.email = email
 
-#	def info():
-#		print(self.name = ': ' + self.email)
+	def info(self):
+		print(self.name + ': ' + self.email)
 
 def main():
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--add',help='The entry to add.')
+	parser.add_argument('--name',help='The name of the entry to add.')
+	parser.add_argument('--email',help='The email address of the entry to add.')
 	args = parser.parse_args()
-	print(args)
+	new_entry = Entry(args.name,args.email)
+	entries.append(new_entry)
 
 if __name__ == "__main__":
 	main()
