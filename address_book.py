@@ -46,6 +46,7 @@ class Entry(object):
     # VCard
 
   def __str__(self):
+        
         if self.first_name and self.last_name:
             if self.title:
                 print(self.title + ' ' + self.first_name + ' ' + self.last_name)
@@ -54,12 +55,11 @@ class Entry(object):
         else:
             print(self.name)
         print('Email: ' + self.email)
-        print('Phone: ' + self.phone)
+        return('Phone: ' + self.phone)
 
   def __repr__(self):
     return self.__str__()
 
-  def info(self):
 
 
 def main():
