@@ -30,7 +30,7 @@ class Entry(object):
     self.last_name = last_name
     self.workplace = workplace
     self.phone = phone
-    
+
     # Future fields:
     # Instant messenger handle, with service
     # Important dates/Anniversaries
@@ -60,7 +60,32 @@ class Entry(object):
   def __repr__(self):
     return self.__str__()
 
+  def info(self):
+    if self.first_name and self.last_name:
+      if self.title:
+        print(self.title + ' ' + self.first_name + ' ' + self.last_name)
+      else:
+        print(self.first_name + ' ' + self.last_name)
+    else:
+      print(self.name)
+    print('Email: ' + self.email)
+    print('Phone: ' + self.phone)
 
+# If csv exist, load into memory in set of entry objects and returns a list
+# Load before any action
+# When you add or delete, if this is first entry, create file. Otherwise write
+# during add/delete.
+thefile = "./fake.csv"
+
+def load_from_csv():
+  with open(thefile) as f:
+    lines = f.read().splitlines()
+  entries = []
+  for line in lines:
+    fields = line.split(",")
+    entries.append(Entry(*fields))
+
+  return entries
 
 def main():
   parser = argparse.ArgumentParser()
@@ -76,6 +101,8 @@ def main():
   parser.add_argument('--phone')
   args = parser.parse_args()
 
+  print("args: {}".format(args))
+
   # filter: Return a sequence yielding those items of iterable for which
   # function(item) is true. If function is None, return the items that are
   # true.
@@ -83,12 +110,18 @@ def main():
     parser.error('Must supply at least one attribute.')
 
   # Pre-seed the entries list with a fake entry.
-  entries.append(Entry(name="Fake name", title='Mr.', first_name='Fakest', last_name='Name', email="fake@email.gov",
-                       address="123 fake street", phone='1-800-FAKE-NUMB'))
+  # TODO: load csv
+  #
+  entries = load_from_csv()
+  # entries.append(Entry(name="Fake name", title='Mr.', first_name='Fakest',
+  #                     last_name='Name', email="fake@email.gov",
+  #                     address="123 fake street", phone='1-800-FAKE-NUMB'))
+
   if args.action == 'add':
     entry_args = args.__dict__
     entry_args.pop('action')
-    entries.append(Entry(**entry_args))
+    e = Entry(**entry_args)
+    entries.append(e)
   elif args.action == 'delete':
     for idx in range(len(entries)):
       entry = entries[idx]
