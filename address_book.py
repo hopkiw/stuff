@@ -46,12 +46,6 @@ class Entry(object):
     # VCard
 
   def __str__(self):
-    return 'Entry({}, {})'.format(self.name, self.email)
-
-  def __repr__(self):
-    return self.__str__()
-
-  def info(self):
         if self.first_name and self.last_name:
             if self.title:
                 print(self.title + ' ' + self.first_name + ' ' + self.last_name)
@@ -61,6 +55,11 @@ class Entry(object):
             print(self.name)
         print('Email: ' + self.email)
         print('Phone: ' + self.phone)
+
+  def __repr__(self):
+    return self.__str__()
+
+  def info(self):
 
 
 def main():
@@ -89,49 +88,49 @@ def main():
   if args.action == 'add':
     entry_args = args.__dict__
     entry_args.pop('action')
-    entries.append(Entry(**args.__dict__))
+    entries.append(Entry(**entry_args))
   elif args.action == 'delete':
     for idx in range(len(entries)):
       entry = entries[idx]
       if args.name and entry.name != args.name:
-        break
+        continue
       elif args.email and entry.email != args.email:
-        break
+        continue
       elif args.address and entry.address != args.address:
-        break
+        continue
       elif args.title and entry.title != args.title:
-        break
+        continue
       elif args.first_name and entry.first_name != args.first_name:
-        break
+        continue
       elif args.middle_name and entry.middle_name != args.middle_name:
-        break
+        continue
       elif args.last_name and entry.last_name != args.last_name:
-        break
+        continue
       elif args.workplace and entry.workplace != args.workplace:
-        break
+        continue
       elif args.phone and entry.phone != args.phone:
-        break
+        continue
       entries.pop(idx)
   elif args.action == 'search':
     for entry in entries:
       if args.name and entry.name == args.name:
-        entry.info()
+        print(entry)
       elif args.email and entry.email == args.email:
-        entry.info()
+        print(entry)
       elif args.address and entry.address == args.address:
-        entry.info()
+        print(entry)
       elif args.title and entry.title == args.title:
-        entry.info()
+        print(entry)
       elif args.first_name and entry.first_name == args.first_name:
-        entry.info()
+        print(entry)
       elif args.middle_name and entry.middle_name == args.middle_name:
-        entry.info()
+        print(entry)
       elif args.last_name and entry.last_name == args.last_name:
-        entry.info()
+        print(entry)
       elif args.workplace and entry.workplace == args.workplace:
-        entry.info()
+        print(entry)
       elif args.phone and entry.phone == args.phone:
-        entry.info()
+        print(entry)
 
 
 if __name__ == '__main__':
