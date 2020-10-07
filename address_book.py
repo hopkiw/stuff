@@ -89,7 +89,7 @@ def main():
   if args.action == 'add':
     entry_args = args.__dict__
     entry_args.pop('action')
-    entries.append(Entry(**args.__dict__))
+    entries.append(Entry(**entry_args))
   elif args.action == 'delete':
     for idx in range(len(entries)):
       entry = entries[idx]
