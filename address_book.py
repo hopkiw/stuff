@@ -1,6 +1,8 @@
 #!/usr/bin/python
 import sys
 import argparse
+import os
+import csv
 
 # An addressbook entry can have many fields, some of which may be unique and
 # some which may be repeated. The design for addressbook entries should not
@@ -54,8 +56,11 @@ class Entry(object):
                 print(self.first_name + ' ' + self.last_name)
         else:
             print(self.name)
-        print('Email: ' + self.email)
-        return('Phone: ' + self.phone)
+        if self.phone:
+          print('Email: ' + self.email)
+          return('Phone: ' + self.phone)
+        elif self.email:
+          return ('Email: ' + self.email)
 
   def __repr__(self):
     return self.__str__()
@@ -71,6 +76,9 @@ class Entry(object):
     print('Email: ' + self.email)
     print('Phone: ' + self.phone)
 
+  def export(self):
+    return [self.name, self.email, self.address, self.title, self.first_name, self.middle_name, self.last_name, self.workplace, self.phone]
+
 # If csv exist, load into memory in set of entry objects and returns a list
 # Load before any action
 # When you add or delete, if this is first entry, create file. Otherwise write
@@ -78,14 +86,22 @@ class Entry(object):
 thefile = "./fake.csv"
 
 def load_from_csv():
-  with open(thefile) as f:
-    lines = f.read().splitlines()
-  entries = []
-  for line in lines:
-    fields = line.split(",")
-    entries.append(Entry(*fields))
+  if os.path.exists(thefile):
+    with open(thefile) as f:
+      lines = f.read().splitlines()
+    entries = []
+    for line in lines:
+      fields = line.split(",")
+      entries.append(Entry(*fields))
 
-  return entries
+    return entries
+  else:
+    return []
+
+def save_to_csv(entries):
+  wr = csv.writer(open(thefile, "w+"), delimiter=',')
+  for entry in entries:
+    wr.writerow(entry.export())
 
 def main():
   parser = argparse.ArgumentParser()
@@ -110,9 +126,9 @@ def main():
     parser.error('Must supply at least one attribute.')
 
   # Pre-seed the entries list with a fake entry.
-  # TODO: load csv
-  #
+
   entries = load_from_csv()
+
   # entries.append(Entry(name="Fake name", title='Mr.', first_name='Fakest',
   #                     last_name='Name', email="fake@email.gov",
   #                     address="123 fake street", phone='1-800-FAKE-NUMB'))
@@ -122,6 +138,7 @@ def main():
     entry_args.pop('action')
     e = Entry(**entry_args)
     entries.append(e)
+    save_to_csv(entries)
   elif args.action == 'delete':
     for idx in range(len(entries)):
       entry = entries[idx]
@@ -143,7 +160,13 @@ def main():
         continue
       elif args.phone and entry.phone != args.phone:
         continue
-      entries.pop(idx)
+      entry.info()
+      if raw_input('Is this the entry you wish to delete? (Y/N) ').upper() == 'Y':
+        entries.pop(idx)
+        break
+      else:
+        continue
+    save_to_csv(entries)
   elif args.action == 'search':
     for entry in entries:
       if args.name and entry.name == args.name:
