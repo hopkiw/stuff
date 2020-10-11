@@ -98,8 +98,8 @@ def load_from_csv():
   else:
     return []
 
-def save_to_csv(entries):
-  wr = csv.writer(open(thefile, "w+"), delimiter=',')
+def save_to_csv(entries, file_to_save=thefile):
+  wr = csv.writer(open(file_to_save, "w+"), delimiter=',')
   for entry in entries:
     wr.writerow(entry.export())
 
@@ -142,6 +142,8 @@ def main():
   elif args.action == 'delete':
     for idx in range(len(entries)):
       entry = entries[idx]
+
+
       if args.name and entry.name != args.name:
         continue
       elif args.email and entry.email != args.email:
@@ -160,6 +162,7 @@ def main():
         continue
       elif args.phone and entry.phone != args.phone:
         continue
+
       entry.info()
       if raw_input('Is this the entry you wish to delete? (Y/N) ').upper() == 'Y':
         entries.pop(idx)
