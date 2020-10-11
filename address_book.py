@@ -1,8 +1,8 @@
 #!/usr/bin/python
-import sys
+
 import argparse
-import os
 import csv
+import os
 
 # An addressbook entry can have many fields, some of which may be unique and
 # some which may be repeated. The design for addressbook entries should not
@@ -19,10 +19,12 @@ import csv
 # manipulation routines should be stored in a package.
 
 entries = []
+fakefile = "./fake.csv"
 
 
 class Entry(object):
-  def __init__(self, name, email='', address='', title='', first_name='', middle_name='', last_name='', workplace='', phone=''):
+  def __init__(self, name, email='', address='', title='', first_name='',
+               middle_name='', last_name='', workplace='', phone=''):
     self.name = name
     self.email = email
     self.address = address
@@ -48,60 +50,87 @@ class Entry(object):
     # VCard
 
   def __str__(self):
-        
-        if self.first_name and self.last_name:
-            if self.title:
-                print(self.title + ' ' + self.first_name + ' ' + self.last_name)
-            else:
-                print(self.first_name + ' ' + self.last_name)
-        else:
-            print(self.name)
-        if self.phone:
-          print('Email: ' + self.email)
-          return('Phone: ' + self.phone)
-        elif self.email:
-          return ('Email: ' + self.email)
+    if self.phone:
+      return('Phone: ' + self.phone)
+    elif self.email:
+      return ('Email: ' + self.email)
 
   def __repr__(self):
     return self.__str__()
 
-  def info(self):
-    if self.first_name and self.last_name:
-      if self.title:
-        print(self.title + ' ' + self.first_name + ' ' + self.last_name)
-      else:
-        print(self.first_name + ' ' + self.last_name)
-    else:
-      print(self.name)
-    print('Email: ' + self.email)
-    print('Phone: ' + self.phone)
-
   def export(self):
-    return [self.name, self.email, self.address, self.title, self.first_name, self.middle_name, self.last_name, self.workplace, self.phone]
+    return [self.name, self.email, self.address, self.title, self.first_name,
+            self.middle_name, self.last_name, self.workplace, self.phone]
 
-# If csv exist, load into memory in set of entry objects and returns a list
-# Load before any action
-# When you add or delete, if this is first entry, create file. Otherwise write
-# during add/delete.
-thefile = "./fake.csv"
 
-def load_from_csv():
+def load_from_csv(thefile):
+  entries = []
   if os.path.exists(thefile):
     with open(thefile) as f:
       lines = f.read().splitlines()
-    entries = []
     for line in lines:
       fields = line.split(",")
       entries.append(Entry(*fields))
+  return entries
 
-    return entries
-  else:
-    return []
 
-def save_to_csv(entries):
+def save_to_csv(entries, thefile):
   wr = csv.writer(open(thefile, "w+"), delimiter=',')
   for entry in entries:
     wr.writerow(entry.export())
+
+
+def prompt_for_deletion(args):
+  for idx in range(len(entries)):
+    entry = entries[idx]
+    if args.name and entry.name != args.name:
+      continue
+    elif args.email and entry.email != args.email:
+      continue
+    elif args.address and entry.address != args.address:
+      continue
+    elif args.title and entry.title != args.title:
+      continue
+    elif args.first_name and entry.first_name != args.first_name:
+      continue
+    elif args.middle_name and entry.middle_name != args.middle_name:
+      continue
+    elif args.last_name and entry.last_name != args.last_name:
+      continue
+    elif args.workplace and entry.workplace != args.workplace:
+      continue
+    elif args.phone and entry.phone != args.phone:
+      continue
+    print(entry)
+    inp = raw_input('Is this the entry you wish to delete? (Y/N) ').upper()
+    if inp == 'Y':
+      entries.pop(idx)
+      return True
+
+  return False
+
+
+def print_matching_entries(args):
+  for entry in entries:
+    if args.name and entry.name == args.name:
+      print(entry)
+    elif args.email and entry.email == args.email:
+      print(entry)
+    elif args.address and entry.address == args.address:
+      print(entry)
+    elif args.title and entry.title == args.title:
+      print(entry)
+    elif args.first_name and entry.first_name == args.first_name:
+      print(entry)
+    elif args.middle_name and entry.middle_name == args.middle_name:
+      print(entry)
+    elif args.last_name and entry.last_name == args.last_name:
+      print(entry)
+    elif args.workplace and entry.workplace == args.workplace:
+      print(entry)
+    elif args.phone and entry.phone == args.phone:
+      print(entry)
+
 
 def main():
   parser = argparse.ArgumentParser()
@@ -117,76 +146,22 @@ def main():
   parser.add_argument('--phone')
   args = parser.parse_args()
 
-  print("args: {}".format(args))
-
-  # filter: Return a sequence yielding those items of iterable for which
-  # function(item) is true. If function is None, return the items that are
-  # true.
   if not filter(None, [args.name, args.email, args.address]):
     parser.error('Must supply at least one attribute.')
 
-  # Pre-seed the entries list with a fake entry.
-
-  entries = load_from_csv()
-
-  # entries.append(Entry(name="Fake name", title='Mr.', first_name='Fakest',
-  #                     last_name='Name', email="fake@email.gov",
-  #                     address="123 fake street", phone='1-800-FAKE-NUMB'))
+  entries = load_from_csv(fakefile)
 
   if args.action == 'add':
     entry_args = args.__dict__
     entry_args.pop('action')
     e = Entry(**entry_args)
     entries.append(e)
-    save_to_csv(entries)
+    save_to_csv(entries, fakefile)
   elif args.action == 'delete':
-    for idx in range(len(entries)):
-      entry = entries[idx]
-      if args.name and entry.name != args.name:
-        continue
-      elif args.email and entry.email != args.email:
-        continue
-      elif args.address and entry.address != args.address:
-        continue
-      elif args.title and entry.title != args.title:
-        continue
-      elif args.first_name and entry.first_name != args.first_name:
-        continue
-      elif args.middle_name and entry.middle_name != args.middle_name:
-        continue
-      elif args.last_name and entry.last_name != args.last_name:
-        continue
-      elif args.workplace and entry.workplace != args.workplace:
-        continue
-      elif args.phone and entry.phone != args.phone:
-        continue
-      entry.info()
-      if raw_input('Is this the entry you wish to delete? (Y/N) ').upper() == 'Y':
-        entries.pop(idx)
-        break
-      else:
-        continue
-    save_to_csv(entries)
+    if prompt_for_deletion():
+      save_to_csv(entries, fakefile)
   elif args.action == 'search':
-    for entry in entries:
-      if args.name and entry.name == args.name:
-        print(entry)
-      elif args.email and entry.email == args.email:
-        print(entry)
-      elif args.address and entry.address == args.address:
-        print(entry)
-      elif args.title and entry.title == args.title:
-        print(entry)
-      elif args.first_name and entry.first_name == args.first_name:
-        print(entry)
-      elif args.middle_name and entry.middle_name == args.middle_name:
-        print(entry)
-      elif args.last_name and entry.last_name == args.last_name:
-        print(entry)
-      elif args.workplace and entry.workplace == args.workplace:
-        print(entry)
-      elif args.phone and entry.phone == args.phone:
-        print(entry)
+    print_matching_entries(args)
 
 
 if __name__ == '__main__':
