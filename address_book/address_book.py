@@ -21,6 +21,7 @@ import os
 entries = []
 fakefile = "./fake.csv"
 
+# TODO: add Entry class to package
 
 class Entry(object):
   def __init__(self, name, email='', address='', title='', first_name='',
@@ -62,6 +63,8 @@ class Entry(object):
     return [self.name, self.email, self.address, self.title, self.first_name,
             self.middle_name, self.last_name, self.workplace, self.phone]
 
+# TODO: make test data and write test function for load_from_csv
+# TODO: add load and save to package
 
 def load_from_csv(thefile):
   entries = []
@@ -79,8 +82,9 @@ def save_to_csv(entries, thefile):
   for entry in entries:
     wr.writerow(entry.export())
 
+# TODO: add search_for_deletion to package and leave prompt_for_deletion in program
 
-def prompt_for_deletion(args):
+def search_for_deletion(args):
   for idx in range(len(entries)):
     entry = entries[idx]
     if args.name and entry.name != args.name:
@@ -101,35 +105,40 @@ def prompt_for_deletion(args):
       continue
     elif args.phone and entry.phone != args.phone:
       continue
-    print(entry)
+    return idx
+
+
+def prompt_for_deletion(args):
+    idx = search_for_deletion(args)
+    print(entries[idx])
     inp = raw_input('Is this the entry you wish to delete? (Y/N) ').upper()
     if inp == 'Y':
       entries.pop(idx)
       return True
+    return False
 
-  return False
-
-
-def print_matching_entries(args):
+def get_matching_entries(args):
+  matches = []
   for entry in entries:
     if args.name and entry.name == args.name:
-      print(entry)
+      matches.append(entry)
     elif args.email and entry.email == args.email:
-      print(entry)
+      matches.append(entry)
     elif args.address and entry.address == args.address:
-      print(entry)
+      matches.append(entry)
     elif args.title and entry.title == args.title:
-      print(entry)
+      matches.append(entry)
     elif args.first_name and entry.first_name == args.first_name:
-      print(entry)
+      matches.append(entry)
     elif args.middle_name and entry.middle_name == args.middle_name:
-      print(entry)
+      matches.append(entry)
     elif args.last_name and entry.last_name == args.last_name:
-      print(entry)
+      matches.append(entry)
     elif args.workplace and entry.workplace == args.workplace:
-      print(entry)
+      matches.append(entry)
     elif args.phone and entry.phone == args.phone:
-      print(entry)
+      matches.append(entry)
+  return matches
 
 
 def main():
@@ -161,7 +170,9 @@ def main():
     if prompt_for_deletion():
       save_to_csv(entries, fakefile)
   elif args.action == 'search':
-    print_matching_entries(args)
+    matches = get_matching_entries(args)
+    for match in matches:
+      print(match)
 
 
 if __name__ == '__main__':
