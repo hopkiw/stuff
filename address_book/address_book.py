@@ -26,12 +26,12 @@ fakefile = "./fake.csv"
 
 
 
-def prompt_for_deletion(args):
-    idx = address_book.search_for_deletion(args)
-    print(address_book.entries[idx])
+def prompt_for_deletion(book,args):
+    idx = book.search_for_deletion(args)
+    print(book.entries[idx])
     inp = raw_input('Is this the entry you wish to delete? (Y/N) ').upper()
     if inp == 'Y':
-      address_book.entries.pop(idx)
+      book.entries.pop(idx)
       return True
     return False
 
@@ -54,19 +54,21 @@ def main():
   if not filter(None, [args.name, args.email, args.address]):
     parser.error('Must supply at least one attribute.')
 
-  entries = address_book.load_from_csv(fakefile)
+  book = address_book.Book()
+  book.load_from_csv(fakefile)
+
 
   if args.action == 'add':
     entry_args = args.__dict__
     entry_args.pop('action')
     e = address_book.Entry(**entry_args)
-    address_book.entries.append(e)
-    address_book.save_to_csv(address_book.entries, fakefile)
+    book.entries.append(e)
+    book.save_to_csv(fakefile)
   elif args.action == 'delete':
     if prompt_for_deletion():
-      address_book.save_to_csv(address_book.entries, fakefile)
+      book.save_to_csv(fakefile)
   elif args.action == 'search':
-    matches = address_book.get_matching_entries(args)
+    matches = book.get_matching_entries(args)
     for match in matches:
       print(match)
 

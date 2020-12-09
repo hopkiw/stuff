@@ -2,7 +2,6 @@
 import csv
 import os
 
-entries = []
 
 class Entry(object):
   def __init__(self, name, email='', address='', title='', first_name='',
@@ -44,88 +43,101 @@ class Entry(object):
     return [self.name, self.email, self.address, self.title, self.first_name,
             self.middle_name, self.last_name, self.workplace, self.phone]
 
+class Book(object):
+    def __init__(self, entries=[]):
+        self.entries = entries
+
+    def load_from_csv(self,thefile):
+      if os.path.exists(thefile):
+        with open(thefile) as f:
+          lines = f.read().splitlines()
+        for line in lines:
+          fields = line.split(",")
+          self.entries.append(Entry(*fields))
+
+    def save_to_csv(self,thefile):
+      wr = csv.writer(open(thefile, "w+"), delimiter=',')
+      for entry in self.entries:
+        wr.writerow(entry.export())
+
+    def search_for_deletion(self,args):
+        for idx in range(len(self.entries)):
+            entry = self.entries[idx]
+            if args.name and entry.name != args.name:
+                continue
+            elif args.email and entry.email != args.email:
+                continue
+            elif args.address and entry.address != args.address:
+                continue
+            elif args.title and entry.title != args.title:
+                continue
+            elif args.first_name and entry.first_name != args.first_name:
+                continue
+            elif args.middle_name and entry.middle_name != args.middle_name:
+                continue
+            elif args.last_name and entry.last_name != args.last_name:
+                continue
+            elif args.workplace and entry.workplace != args.workplace:
+                continue
+            elif args.phone and entry.phone != args.phone:
+                continue
+            return idx
+
+    def get_matching_entries(self,args):
+        matches = []
+        for entry in self.entries:
+            if args.name and entry.name == args.name:
+                matches.append(entry)
+            elif args.email and entry.email == args.email:
+                matches.append(entry)
+            elif args.address and entry.address == args.address:
+                matches.append(entry)
+            elif args.title and entry.title == args.title:
+                matches.append(entry)
+            elif args.first_name and entry.first_name == args.first_name:
+                matches.append(entry)
+            elif args.middle_name and entry.middle_name == args.middle_name:
+                matches.append(entry)
+            elif args.last_name and entry.last_name == args.last_name:
+                matches.append(entry)
+            elif args.workplace and entry.workplace == args.workplace:
+                matches.append(entry)
+            elif args.phone and entry.phone == args.phone:
+                matches.append(entry)
+        return matches
+
+    def get_matching_entries(self,args):
+        matches = []
+        for entry in self.entries:
+            if args.name and entry.name == args.name:
+                matches.append(entry)
+            elif args.email and entry.email == args.email:
+                matches.append(entry)
+            elif args.address and entry.address == args.address:
+                matches.append(entry)
+            elif args.title and entry.title == args.title:
+                matches.append(entry)
+            elif args.first_name and entry.first_name == args.first_name:
+                matches.append(entry)
+            elif args.middle_name and entry.middle_name == args.middle_name:
+                matches.append(entry)
+            elif args.last_name and entry.last_name == args.last_name:
+                matches.append(entry)
+            elif args.workplace and entry.workplace == args.workplace:
+                matches.append(entry)
+            elif args.phone and entry.phone == args.phone:
+                matches.append(entry)
+        return matches
+
+
 # TODO: make test data and write test function for load_from_csv
 
-def load_from_csv(thefile):
-  entries = []
-  if os.path.exists(thefile):
-    with open(thefile) as f:
-      lines = f.read().splitlines()
-    for line in lines:
-      fields = line.split(",")
-      entries.append(Entry(*fields))
-  return entries
 
 
-def save_to_csv(entries, thefile):
-  wr = csv.writer(open(thefile, "w+"), delimiter=',')
-  for entry in entries:
-    wr.writerow(entry.export())
-def search_for_deletion(args):
-  for idx in range(len(entries)):
-    entry = entries[idx]
-    if args.name and entry.name != args.name:
-      continue
-    elif args.email and entry.email != args.email:
-      continue
-    elif args.address and entry.address != args.address:
-      continue
-    elif args.title and entry.title != args.title:
-      continue
-    elif args.first_name and entry.first_name != args.first_name:
-      continue
-    elif args.middle_name and entry.middle_name != args.middle_name:
-      continue
-    elif args.last_name and entry.last_name != args.last_name:
-      continue
-    elif args.workplace and entry.workplace != args.workplace:
-      continue
-    elif args.phone and entry.phone != args.phone:
-      continue
-    return idx
 
-  def get_matching_entries(args):
-      matches = []
-      for entry in entries:
-          if args.name and entry.name == args.name:
-              matches.append(entry)
-          elif args.email and entry.email == args.email:
-              matches.append(entry)
-          elif args.address and entry.address == args.address:
-              matches.append(entry)
-          elif args.title and entry.title == args.title:
-              matches.append(entry)
-          elif args.first_name and entry.first_name == args.first_name:
-              matches.append(entry)
-          elif args.middle_name and entry.middle_name == args.middle_name:
-              matches.append(entry)
-          elif args.last_name and entry.last_name == args.last_name:
-              matches.append(entry)
-          elif args.workplace and entry.workplace == args.workplace:
-              matches.append(entry)
-          elif args.phone and entry.phone == args.phone:
-              matches.append(entry)
-      return matches
 
-def get_matching_entries(args):
-  matches = []
-  for entry in entries:
-    if args.name and entry.name == args.name:
-      matches.append(entry)
-    elif args.email and entry.email == args.email:
-      matches.append(entry)
-    elif args.address and entry.address == args.address:
-      matches.append(entry)
-    elif args.title and entry.title == args.title:
-      matches.append(entry)
-    elif args.first_name and entry.first_name == args.first_name:
-      matches.append(entry)
-    elif args.middle_name and entry.middle_name == args.middle_name:
-      matches.append(entry)
-    elif args.last_name and entry.last_name == args.last_name:
-      matches.append(entry)
-    elif args.workplace and entry.workplace == args.workplace:
-      matches.append(entry)
-    elif args.phone and entry.phone == args.phone:
-      matches.append(entry)
-  return matches
+
+
+
+
+
