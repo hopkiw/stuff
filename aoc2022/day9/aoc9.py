@@ -53,10 +53,9 @@ class Point:
 
 
 class Board:
-  def __init__(self):
+  def __init__(self, knots=2):
     self.knots = []
-    # for i in range(10):
-    for i in range(2):
+    for i in range(knots):
       self.knots.append(Point())
 
     self.ts = set()
@@ -75,7 +74,7 @@ class Board:
       for x in range(self.min_x - pad, self.max_x + pad):
         char = 'x'
         if (x, y) in self.ts:
-          char = 'X'
+          char = ' '
 
         for knot in self.knots[1:]:
           if x == knot.x and y == knot.y:
@@ -96,29 +95,31 @@ class Board:
     input()
 
   def move_head(self, d):
-    if d == 'R':
-      self.knots[0].x += 1
+    h = self.knots[0]
 
-      if self.knots[0].x > self.max_x:
-          self.max_x = self.knots[0].x
+    if d == 'R':
+      h.x += 1
+
+      if h.x > self.max_x:
+          self.max_x = h.x
 
     elif d == 'L':
-      self.knots[0].x -= 1
+      h.x -= 1
 
-      if self.knots[0].x < self.min_x:
-        self.min_x = self.knots[0].x
+      if h.x < self.min_x:
+        self.min_x = h.x
 
     elif d == 'U':
-      self.knots[0].y += 1
+      h.y += 1
 
-      if self.knots[0].y > self.max_y:
-          self.max_y = self.knots[0].y
+      if h.y > self.max_y:
+          self.max_y = h.y
 
     elif d == 'D':
-      self.knots[0].y -= 1
+      h.y -= 1
 
-      if self.knots[0].y < self.min_y:
-        self.min_y = self.knots[0].y
+      if h.y < self.min_y:
+        self.min_y = h.y
 
   def move_tail(self, idx):
     if idx == 0:
@@ -127,46 +128,114 @@ class Board:
     if self.knots[idx - 1] == self.knots[idx]:
       return
 
-    if self.knots[idx - 1].x == self.knots[idx].x + 2:  # head go ahead
-      self.knots[idx].x += 1
-      self.knots[idx].y = self.knots[idx - 1].y
+    h = self.knots[idx - 1]
+    t = self.knots[idx]
 
-    if self.knots[idx - 1].x == self.knots[idx].x - 2:  # head is backing away
-      self.knots[idx].x -= 1
-      self.knots[idx].y = self.knots[idx - 1].y
+    changedx = False
+    changedy = False
 
-    if self.knots[idx - 1].y == self.knots[idx].y + 2:  # head is ahead
-      self.knots[idx].y += 1
-      self.knots[idx].x = self.knots[idx - 1].x
+    if h.x == t.x + 2:  # head go ahead
+      t.x += 1
+      changedx = True
 
-    if self.knots[idx - 1].y == self.knots[idx].y - 2:  # head is below
-      self.knots[idx].y -= 1
-      self.knots[idx].x = self.knots[idx - 1].x
+    elif h.x == t.x - 2:  # head is backing away
+      t.x -= 1
+      changedx = True
 
-    self.ts.add((self.knots[idx].x, self.knots[idx].y))
+    elif h.y == t.y + 2:  # head is above
+      t.y += 1
+      changedy = True
 
-  def play(self, lines):
+    elif h.y == t.y - 2:  # head is below
+      t.y -= 1
+      changedy = True
+
+    if changedx:
+      if h.y > t.y:
+        t.y += 1
+
+      if h.y < t.y:
+        t.y -= 1
+
+    elif changedy:
+      if h.x > t.x:
+        t.x += 1
+
+      if h.x < t.x:
+        t.x -= 1
+
+    if idx + 1 == len(self.knots):
+      self.ts.add((t.x, t.y))
+
+  def check_tail(self, idx):
+    if idx == 0:
+      raise Exception('knot 0 cannot be a tail')
+
+    h = self.knots[idx - 1]
+    t = self.knots[idx]
+
+    if h == t:
+      return
+
+    if h.x == t.x:
+      if abs(t.y - h.y) == 1:
+        return
+
+    if h.y == t.y:
+      if abs(t.x - h.x) == 1:
+        return
+
+    if abs(t.x - h.x) == 1 and abs(t.y - h.y) == 1:
+      return
+
+    raise Exception((f't[{idx}] is too far from t[{idx - 1}]'))
+
+  def play(self, lines, draw=True):
     for line in lines:
-      print('process line', line)
+      if draw:
+        print('process line', line)
+
       direction, steps = line.split()
       for i in range(int(steps)):
         self.move_head(direction)
-        print('h moves to', self.knots[0])
+        if draw:
+          print('h moves to', self.knots[0])
 
         for idx in range(1, len(self.knots)):
           self.move_tail(idx)
-          print('t[%d] moves to' % idx, self.knots[idx])
+          if draw:
+            print('t[%d] moves to' % idx, self.knots[idx])
 
-        self.draw()
+        if draw:
+          self.draw()
+
+
+def test_b():
+  lines = [
+      'R 5',
+      'U 8',
+      'L 8',
+      'D 3',
+      'R 17',
+      'D 10',
+      'L 25',
+      'U 20'
+  ]
+  b = Board(10)
+  b.play(lines, False)
+  if len(b.ts) != 36:
+    raise Exception('Got', len(b.ts), 'wanted 36')
 
 
 def main():
   lines = read_input_file(sys.argv[1])
   print('Got', len(lines), 'lines')
 
-  b = Board()
-  b.play(lines)
-  print('visited', len(b.ts))
+  test_b()
+
+  b = Board(10)
+  b.play(lines, False)
+  print(len(b.ts))
 
 
 if __name__ == '__main__':
