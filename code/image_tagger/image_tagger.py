@@ -74,7 +74,7 @@ class MainApp:
     for tag in tags:
       self.tag_store.append([tag])
 
-    rect = self.window.get_allocation()
+    rect = self.image.get_allocation()
     if rect.x < 0 or rect.y < 0 or rect.width < 1 or rect.height < 1:
       return
 
