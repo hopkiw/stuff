@@ -25,16 +25,18 @@
         <property name="visible">True</property>
         <property name="can-focus">False</property>
         <child>
-          <object class="GtkBox" id="image_display">
+          <object class="GtkBox" id="image_box">
             <property name="name">image display</property>
             <property name="visible">True</property>
             <property name="can-focus">False</property>
             <property name="orientation">vertical</property>
             <child>
-              <object class="GtkImage">
+              <object class="GtkImage" id="image">
+                <property name="width-request">420</property>
+                <property name="height-request">420</property>
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
-                <property name="pixbuf">new.png</property>
+                <property name="stock">gtk-missing-image</property>
               </object>
               <packing>
                 <property name="expand">True</property>
@@ -98,6 +100,17 @@
             <property name="expand">False</property>
             <property name="fill">True</property>
             <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkSeparator">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
           </packing>
         </child>
         <child>
@@ -191,7 +204,7 @@
           <packing>
             <property name="expand">False</property>
             <property name="fill">True</property>
-            <property name="position">1</property>
+            <property name="position">2</property>
           </packing>
         </child>
       </object>

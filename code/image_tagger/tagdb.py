@@ -108,7 +108,7 @@ class TagDB:
     cur.execute(q, (image, tag))
     self.con.commit()
 
-  def show(self):
+  def all_imagetags(self):
     cur = self.con.cursor()
     res = cur.execute("""
       SELECT images.path,
@@ -120,8 +120,12 @@ class TagDB:
     return res.fetchall()
 
   def all_tags(self):
-    res = self.show()
-    print(res)
+    cur = self.con.cursor()
+    res = cur.execute("""
+      SELECT tag
+        FROM tags""")
+
+    return [x[0] for x in res.fetchall()]
 
 
 def main():
