@@ -1,7 +1,6 @@
-import argparse
 import os
 import sqlite3
-# import sys
+import sys
 
 
 # TODO: cache known tags so we don't have to keep checking
@@ -120,37 +119,27 @@ class TagDB:
 
     return res.fetchall()
 
+  def all_tags(self):
+    res = self.show()
+    print(res)
+
 
 def main():
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--image', required=True)
-  parser.add_argument('--tag', action='append')
-  parser.add_argument('--show', action='store_true')
-  parser.add_argument('--remove', action='store_true')
-  args = parser.parse_args()
+  if len(sys.argv[1:]) == 0:
+    print('Usage:', sys.argv[0], '<image> [tag ...]')
+    sys.exit(0)
+
+  image = sys.argv[1]
+  tags = sys.argv[2:]
 
   db = TagDB()
 
-  if args.show:
-    print('All tags:')
-    for entry in db.show():
-        print('  Entry:', entry)
+  for tag in tags:
+    db.add_tag(image, tag)
 
-    return
-
-  if args.remove and not args.tag:
-    print('remove all tags not yet supported')
-    return
-
-  if args.tag:
-    if args.remove:
-      db.remove_tag(args.image, args.tag[0])
-    else:
-      db.add_tag(args.image, args.tag[0])
-
-  print(args.image + ':')
-  for tag in db.get_tags(args.image):
-    print('  Tag:', tag)
+  print(image + ':')
+  for i, tag in enumerate(db.get_tags(image)):
+    print('\tTag %2d: %s' % (i, tag))
 
   db.con.close()
 
