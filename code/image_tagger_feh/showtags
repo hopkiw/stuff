@@ -1,0 +1,4 @@
+#!/bin/bash
+
+file="$1"
+grep "^$file," ~/filetags | cut -d, -f2-

@@ -1,0 +1,30 @@
+#!/bin/bash
+
+file="$1"
+
+fehpid=$(pgrep feh)
+if [[ -n $fehpid ]]; then
+  windowid=$(xdotool search  --pid $fehpid)
+fi
+
+touch ~/tags
+
+while true ; do
+  added=$(cat ~/tags | dmenu ${windowid:+-w $windowid} -f -l 5 -p 'add tag > ')
+
+  if [[ -n $added ]] ; then
+    if ! grep -q "^$file,$added" ~/filetags; then
+      echo "Tagging $added"
+      printf '%s,%s\n' "$file" "$added" >> ~/filetags;
+      sort -u -o ~/filetags ~/filetags
+    fi
+
+    if ! grep -q "$added" ~/tags; then
+      echo "New $added"
+      printf '%s\n' "$added" >> ~/tags
+      sort -u -o ~/tags ~/tags
+    fi
+  else
+    break
+  fi
+done

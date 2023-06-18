@@ -1,0 +1,12 @@
+#!/bin/bash
+
+feh \
+  -Sfilename \
+  --version-sort \
+  -P \
+  -C /usr/share/fonts/truetype/dejavu/ \
+  -e "DejaVuSans/28" \
+  -A "addtag %F" \
+  --action1 ";showtags %F" \
+  --info "showtags %F" \
+  -. "$@"
