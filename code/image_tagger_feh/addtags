@@ -13,19 +13,20 @@ fi
 touch $TAGSFILE
 
 while true ; do
-  added=$(cat "$TAGSFILE" | dmenu "${windowid:+-w $windowid}" -f -l 5 -p 'add tag > ')
-
+  added=$(dmenu ${windowid:+-w $windowid} -f -l 5 -p 'add tag > ' < "$TAGSFILE")
   if [[ -z "$added" ]] ; then
     break;
   fi
 
-  if ! grep -q "'^'${added}'$'" "$TAGSFILE"; then
+  echo "DEBUG: got ${added}";
+  if ! grep -q "^${added}$" "$TAGSFILE"; then
     echo "New tag ${added}"
     printf '%s\n' "${added}" >> "$TAGSFILE"
   fi
 
-  if ! grep -q "'^'${file},${added}'$'" "$TAGFILE"; then
+  if ! grep -q "^${file},${added}$" "$FILETAGS"; then
     echo "Tagging ${file} as ${added}"
-    printf '%s,%s\n' "$file" "$added" >> "$TAGFILE";
+    printf '%s,%s\n' "$file" "$added" >> "$FILETAGS";
   fi
+  continue 2
 done

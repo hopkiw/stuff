@@ -14,10 +14,10 @@ feh \
   --version-sort \
   -C /usr/share/fonts/truetype/dejavu/ \
   -e "DejaVuSans/28" \
-  -A "[tag image]addtags %F" \
-  --action1 ";[show tags]showtags %F" \
-  --action2 ";[play as video]mpv %F" \
+  -A ";[tag image]addtags %F" \
+  --action1 ";[play as video]mpv --loop %F" \
   --info "showtags %F" \
   --draw-tinted \
+  --draw-actions \
   --scale-down \
   $@
