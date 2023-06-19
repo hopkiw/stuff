@@ -1,12 +1,23 @@
 #!/bin/bash
 
+# Note these feh command line options:
+#
+#     a [toggle_actions]
+#             Toggle actions display (see --draw-actions)
+#     d [toggle_filenames]
+#             Toggle filename display (see --draw-filename)
+#     i [toggle_info]
+#             Toggle info display (see --info)
+
 feh \
   -Sfilename \
   --version-sort \
-  -P \
   -C /usr/share/fonts/truetype/dejavu/ \
   -e "DejaVuSans/28" \
-  -A "addtag %F" \
-  --action1 ";showtags %F" \
+  -A "[tag image]addtags %F" \
+  --action1 ";[show tags]showtags %F" \
+  --action2 ";[play as video]mpv %F" \
   --info "showtags %F" \
-  -. "$@"
+  --draw-tinted \
+  --scale-down \
+  $@
