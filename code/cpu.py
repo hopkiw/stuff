@@ -2,12 +2,16 @@
 
 import curses
 import sys
+
+from collections import defaultdict
 from curses import wrapper
 
 
 WIN_REGISTER_WIDTH = 50
 WIN_TEXT_WIDTH = 50
 WIN_MEMORY_HEIGHT = 20
+TEXT = 0x7f000000
+STACK = 0x55000000
 
 
 class Window:
@@ -72,14 +76,12 @@ class ListWindow:
     def refresh(self):
         self.w.clear()
         for n, item in enumerate(self.items):
-            self.w.addstr(n, 0, f'{n:#06x}: {item}')
+            self.w.addstr(n, 0, f'{n + TEXT:#0x}: {item}')
         self.w.nc_w.chgat(self.selected, 0, -1, curses.A_REVERSE)
         self.w.refresh()
 
     def set(self, sel):
-        if sel > len(self.items):
-            raise Exception('index out of range')
-        elif sel < 0:
+        if sel > len(self.items) or sel < 0:
             raise Exception('index out of range')
         self.selected = sel
 
@@ -93,7 +95,7 @@ class State:
                 'dx': 0,
                 'si': 0,  # string source
                 'di': 0,  # string dest
-                'ip': 0,
+                'ip': 0,  # TODO: make ro
                 'bp': 0,
                 'sp': 0,
                 }
@@ -107,16 +109,21 @@ class State:
         if memory:
             self.memory = memory
         else:
-            self.memory = [0] * 1024
+            self.memory = defaultdict(int)
 
 
 class CPU:
     def __init__(self, instructions):
         self.instructions = instructions
         self.states = [State()]
+        self.states[-1].registers['sp'] = STACK
 
     def prev(self):
         self.states.pop()
+
+    def is_valid(self, operand):
+        pass
+    # maybe central boundary validation
 
     def parse_operand(self, op):
         optype = None
@@ -138,23 +145,27 @@ class CPU:
 
         return (val, optype)
 
+    def op_push(self, operand):
+        self.states[-1].registers['sp'] -= 2
+        self.op_mov(f'[sp],{operand}')
+
     def op_jmp(self, operand):
         dest, desttype = self.parse_operand(operand)
         if desttype == 'r':
             dest = self.registers[dest]
 
-        if dest >= len(self.instructions):
+        if dest & 0xff000000 != TEXT:
             raise Exception('invalid jmp target')
 
-        self.states[-1].registers['ip'] = dest
+        self.states[-1].registers['ip'] = dest - TEXT
 
     def op_jne(self, operand):
         if self.flags['zf'] == 0:
-            self.jmp(operand)
+            self.op_jmp(operand)
 
     def op_je(self, operand):
         if self.flags['zf'] == 1:
-            self.jmp(operand)
+            self.op_jmp(operand)
 
     def op_cmp(self, operands):
         dest, src = operands.split(',')
@@ -181,7 +192,7 @@ class CPU:
             res = self.registers[dest] - val
         elif desttype == 'm':
             addr = self.registers[dest]
-            if addr <= len(self.instructions):
+            if addr & 0xff000000 != TEXT:
                 raise Exception('memory access out of bounds')
             res = self.memory[addr] - val
         else:
@@ -218,7 +229,7 @@ class CPU:
             self.registers[dest] = newval
         elif desttype == 'm':
             addr = self.registers[dest]
-            if addr <= len(self.instructions):
+            if addr & 0xff000000 != STACK:
                 raise Exception('memory access out of bounds')
             newval = self.memory[addr] - val
             self.registers[addr] = newval
@@ -283,12 +294,13 @@ class CPU:
             raise Exception('unknown src operand type')
 
         if desttype == 'r':
-            self.registers[dest] = val
+            self.registers[dest] = val & 0xffff
         elif desttype == 'm':
             addr = self.registers[dest]
-            if addr <= len(self.instructions):
-                raise Exception('memory access out of bounds')
-            self.memory[addr] = val
+#            print('addr is', hex(addr), file=sys.stderr)
+#            if addr & 0xff000000 != STACK:
+#                raise Exception('memory access out of bounds')
+            self.memory[addr] = val & 0xffff
         else:
             raise Exception('unknown dest operand type')
 
@@ -312,6 +324,8 @@ class CPU:
             self.op_jne(operands)
         elif op == 'je':
             self.op_je(operands)
+        elif op == 'push':
+            self.op_push(operands)
         elif op == 'nop':
             pass
         else:
@@ -336,13 +350,19 @@ class CPU:
     def ip(self):
         return self.registers['ip']
 
+    @property
+    def sp(self):
+        return self.registers['sp']
+
 
 def update_memory(cpu, memory_win):
-    for n, val in enumerate(cpu.memory):
-        addr = n + len(cpu.instructions)
-        data = cpu.memory[addr]
+    memory_win.addstr(0, 0, '>')
+    for n in range(10):
+        addr = n + cpu.sp
+        data1 = cpu.memory[addr]
+        data2 = data1
         memory_win.addnstr(
-                n, 0, f'{addr:#06x}: {data:#06x}', 70)
+                n, 1, f'{addr:#06x}: {data1:#06x} {data2:#06x}', 70)
         if n > 10:  # TODO calculate sizing
             break
     memory_win.refresh()
@@ -350,7 +370,7 @@ def update_memory(cpu, memory_win):
 
 def update_text(cpu, text_win):
     if not text_win.w.items:
-        text_win.add(cpu.instructions)
+        text_win.set(cpu.instructions)
     text_win.w.selected = cpu.ip
     text_win.refresh()
 
@@ -420,9 +440,12 @@ def main(stdscr):
                 continue
             cpu.execute()
             refresh = True
+
         elif inp == curses.KEY_RESIZE:
+            # TODO: implement resizing
             memory_win.addstr(3, 2, f'RESIZED!: {inp}')
             memory_win.refresh()
+
         elif inp == ord('q'):
             return
 
@@ -435,7 +458,6 @@ def main(stdscr):
 
 if __name__ == '__main__':
     wrapper(main)
-    print('huh')
 
 # Features:
 # Display asm code with addresses in a scrollable window
@@ -484,3 +506,48 @@ if __name__ == '__main__':
 # fix box
 # make ops a class that handles parsing and validating their arguments?
 # label support
+# indirect support
+# comment support
+#
+# change numbering/addressing to match c layout
+#
+#              +------------------------------------+
+#              |                                    |
+# High address |                                    |
+#              |                                    |
+#              |------------------------------------|
+#              |                                    |
+#              |             Stack                  |
+#              |                                    |
+#              |- - - - - - - - - - - - - - - - - - |
+#              |               |                    |
+#              |               |                    |
+#              |               v                    |
+#              |                                    |
+#              |                                    |
+#              |                                    |
+#              |               ^                    |
+#              |               |                    |
+#              |               |                    |
+#              |- - - - - - - - - - - - - - - - - - |
+#              |                                    |
+#              |             Heap                   |
+#              |                                    |
+#              |------------------------------------|
+#              |                                    |
+#              |         Uninitialized data         |
+#              |                                    |
+#              |------------------------------------|
+#              |                                    |
+#              |         Initialized data           |
+#              |                                    |
+#              |------------------------------------|
+#              |                                    |
+# Low address  |             Text                   |
+#              |                                    |
+#              +------------------------------------+
+#
+#              there are FOUR BYTES!
+#              but two letter register names implies two byte words...
+#
+#              highlight sub(sp,16) vs push/pop strategies
