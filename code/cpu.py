@@ -59,11 +59,8 @@ class ListLabelWindow(LabelWindow):
         self.w = ListWindow(Window(self.label.nc_w, 4, 2))
         self.refresh()
 
-    def add(self, item):
-        if hasattr(item, '__getitem__'):
-            self.w.items.extend(item)
-        else:
-            self.w.items.append(item)
+    def set(self, items):
+        self.w.items = items
 
 
 class ListWindow:
@@ -118,18 +115,8 @@ class CPU:
         self.instructions = instructions
         self.states = [State()]
 
-#    def next(self):
-#        # Generate on-demand to allow for future limitations in undo buffer
-#        if self.pos + 1 == len(self.states):
-#            state = self.states[self.pos]
-#            newstate = State(state.registers, state.flags, state.memory)
-#            self.states.append(newstate)
-#        self.pos += 1
-#
-#    def prev(self):
-#        if self.pos == 0:
-#            return
-#        self.pos -= 1
+    def prev(self):
+        self.states.pop()
 
     def parse_operand(self, op):
         optype = None
@@ -151,7 +138,7 @@ class CPU:
 
         return (val, optype)
 
-    def jmp(self, operand):
+    def op_jmp(self, operand):
         dest, desttype = self.parse_operand(operand)
         if desttype == 'r':
             dest = self.registers[dest]
@@ -161,15 +148,15 @@ class CPU:
 
         self.states[-1].registers['ip'] = dest
 
-    def jne(self, operand):
+    def op_jne(self, operand):
         if self.flags['zf'] == 0:
             self.jmp(operand)
 
-    def je(self, operand):
+    def op_je(self, operand):
         if self.flags['zf'] == 1:
             self.jmp(operand)
 
-    def cmp(self, operands):
+    def op_cmp(self, operands):
         dest, src = operands.split(',')
 
         dest, desttype = self.parse_operand(dest)
@@ -205,7 +192,7 @@ class CPU:
         else:
             self.states[-1].flags['zf'] = 0
 
-    def sub(self, operands):
+    def op_sub(self, operands):
         dest, src = operands.split(',')
 
         dest, desttype = self.parse_operand(dest)
@@ -243,7 +230,7 @@ class CPU:
         else:
             self.flags['zf'] = 0
 
-    def add(self, operands):
+    def op_add(self, operands):
         dest, src = operands.split(',')
 
         dest, desttype = self.parse_operand(dest)
@@ -274,7 +261,7 @@ class CPU:
         else:
             raise Exception('unknown dest operand type')
 
-    def mov(self, operands):
+    def op_mov(self, operands):
         dest, src = operands.split(',')
 
         dest, desttype = self.parse_operand(dest)
@@ -306,27 +293,29 @@ class CPU:
             raise Exception('unknown dest operand type')
 
     def execute(self):
-        instruction = self.instructions[self.ip]
-        op, operands = instruction.split(maxsplit=1)
+        self.states.append(State(self.registers, self.flags, self.memory))
+
         ip = self.ip
+        instruction = self.instructions[ip]
+        op, operands = instruction.split(maxsplit=1)
         if op == 'mov':
-            self.mov(operands)
+            self.op_mov(operands)
         elif op == 'add':
-            self.add(operands)
+            self.op_add(operands)
         elif op == 'sub':
-            self.sub(operands)
+            self.op_sub(operands)
         elif op == 'cmp':
-            self.cmp(operands)
+            self.op_cmp(operands)
         elif op == 'jmp':
-            self.jmp(operands)
+            self.op_jmp(operands)
         elif op == 'jne':
-            self.jne(operands)
+            self.op_jne(operands)
         elif op == 'je':
-            self.je(operands)
+            self.op_je(operands)
         elif op == 'nop':
-            return
+            pass
         else:
-            raise Exception('invalid operation "%s"' % op)
+            raise Exception('unsupported operation "%s"' % op)
 
         if ip == self.ip:
             self.states[-1].registers['ip'] += 1
@@ -348,8 +337,35 @@ class CPU:
         return self.registers['ip']
 
 
+def update_memory(cpu, memory_win):
+    for n, val in enumerate(cpu.memory):
+        addr = n + len(cpu.instructions)
+        data = cpu.memory[addr]
+        memory_win.addnstr(
+                n, 0, f'{addr:#06x}: {data:#06x}', 70)
+        if n > 10:  # TODO calculate sizing
+            break
+    memory_win.refresh()
+
+
+def update_text(cpu, text_win):
+    if not text_win.w.items:
+        text_win.add(cpu.instructions)
+    text_win.w.selected = cpu.ip
+    text_win.refresh()
+
+
+def update_registers(cpu, register_win):
+    for n, reg in enumerate(cpu.registers):
+        register_win.addstr(n, 0, f'{reg}: {cpu.registers[reg]:#06x}')
+
+    for m, flag in enumerate(cpu.flags):
+        register_win.addstr(m + n + 2, 0,
+                            f'{flag}: {cpu.flags[flag]}')
+    register_win.refresh()
+
+
 def main(stdscr):
-    # Clear screen
     stdscr.clear()
 
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
@@ -383,87 +399,43 @@ def main(stdscr):
     with open(fn, 'r') as fh:
         instructions = fh.read().splitlines()
 
-    text_win.add(instructions)
-    text_win.refresh()
-
     cpu = CPU(instructions)
 
-    for n, reg in enumerate(cpu.registers):
-        register_win.addstr(n, 0, f'{reg}: {cpu.registers[reg]:#06x}')
+    update_text(cpu, text_win)
+    update_memory(cpu, memory_win)
+    update_registers(cpu, register_win)
 
-    for m, flag in enumerate(cpu.flags):
-        register_win.addstr(m + n + 2, 0,
-                            f'{flag}: {cpu.flags[flag]}')
-
-    register_win.refresh()
-
-#    with open('sample.txt', 'r') as fh:
-#        lines = fh.read().splitlines()
-#
-#    for n, line in enumerate(lines):
-#        line = f'{n + len(instructions):#06x}: {line}'
-#        memory_win.addstr(n, 0, line)
-#        if n > 10:
-#            break
-#
-#    memory_win.refresh()
-
-    curses.doupdate()
-
+    refresh = False
     while True:
+        curses.doupdate()
         inp = stdscr.getch()
         if inp == curses.KEY_UP or inp == ord('k'):
-            pass
-#            if cpu.pos == 0:
-#                continue
-#            # text_win.w.prev()
-#            cpu.prev()
-#            text_win.w.selected = cpu.pos
-#            text_win.refresh()
-#            for n, reg in enumerate(cpu.registers):
-#                register_win.addstr(n, 0, f'{reg}: {cpu.registers[reg]:#06x}')
-#
-#            for m, flag in enumerate(cpu.flags):
-#                register_win.addstr(m + n + 2, 0,
-#                                    f'{flag}: {cpu.flags[flag]}')
-#                register_win.refresh()
+            if cpu.ip == 0:
+                continue
+            cpu.prev()
+            refresh = True
+
         elif inp == curses.KEY_DOWN or inp == ord('j'):
             if cpu.ip + 1 == len(instructions):
                 continue
             cpu.execute()
-            text_win.w.selected = cpu.ip
-            text_win.refresh()
-            for n, reg in enumerate(cpu.registers):
-                register_win.addstr(n, 0, f'{reg}: {cpu.registers[reg]:#06x}')
-
-            for m, flag in enumerate(cpu.flags):
-                register_win.addstr(m + n + 2, 0,
-                                    f'{flag}: {cpu.flags[flag]}')
-                register_win.refresh()
-
-            for n, val in enumerate(cpu.memory):
-                data = cpu.memory[n + len(instructions)]
-                memory_win.addnstr(
-                        n, 0, f'{n + len(instructions):#06x}: {data:#06x}', 70)
-                if n > 10:
-                    break
-
-            memory_win.addnstr(0, 0, str(cpu.ip), 70)
-            memory_win.refresh()
+            refresh = True
         elif inp == curses.KEY_RESIZE:
             memory_win.addstr(3, 2, f'RESIZED!: {inp}')
             memory_win.refresh()
         elif inp == ord('q'):
             return
 
-        # register_win.addstr(m + n + 4, 0, f'{cpu.registers}')
-        register_win.refresh()
-        curses.doupdate()
+        if refresh:
+            update_text(cpu, text_win)
+            update_memory(cpu, memory_win)
+            update_registers(cpu, register_win)
+            refresh = False
 
 
 if __name__ == '__main__':
-    res = wrapper(main)
-    print('got res:', res)
+    wrapper(main)
+    print('huh')
 
 # Features:
 # Display asm code with addresses in a scrollable window
@@ -502,11 +474,13 @@ if __name__ == '__main__':
 # mov r/m8, imm8  # move imm8 to r/m8
 #
 # memory window has two modes, depending on size of screen, showing more at a
-# time
-#
+#   time
 # read every byte (two hex chars) and pass to chr; or '.'
-#
-# addr: b1 b2 b3 b4 b5 b6 b7 b8 .ELF....
-#
+#   addr: b1 b2 b3 b4 b5 b6 b7 b8 .ELF....
 # restrict sizes
 # list of objects or bytestring?
+# more addressing modes
+# shift operators?
+# fix box
+# make ops a class that handles parsing and validating their arguments?
+# label support
