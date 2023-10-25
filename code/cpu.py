@@ -95,9 +95,9 @@ class State:
                 'dx': 0,
                 'si': 0,  # string source
                 'di': 0,  # string dest
-                'ip': 0,  # TODO: make ro
-                'bp': 0,
-                'sp': 0,
+                'ip': TEXT,  # TODO: make ro
+                'bp': STACK,
+                'sp': STACK,
                 }
         if registers:
             self.registers.update(registers)
@@ -145,19 +145,36 @@ class CPU:
 
         return (val, optype)
 
+    def op_ret(self, _):
+        self.op_jmp('[sp]')
+        self.op_add('sp,0x02')
+
+    def op_call(self, operand):
+        self.op_push('ip')
+        self.op_jmp(operand)
+
     def op_push(self, operand):
-        self.states[-1].registers['sp'] -= 2
+        # self.states[-1].registers['sp'] -= 2
+        self.op_sub('sp,0x02')
         self.op_mov(f'[sp],{operand}')
+
+    def op_pop(self, operand):
+        self.op_mov(f'{operand},[sp]')
+        # self.states[-1].registers['sp'] += 2
+        self.op_add('sp,0x02')
 
     def op_jmp(self, operand):
         dest, desttype = self.parse_operand(operand)
         if desttype == 'r':
             dest = self.registers[dest]
+        elif desttype == 'm':
+            addr = self.registers[dest]
+            dest = self.memory[addr]
 
         if dest & 0xff000000 != TEXT:
             raise Exception('invalid jmp target')
 
-        self.states[-1].registers['ip'] = dest - TEXT
+        self.states[-1].registers['ip'] = dest
 
     def op_jne(self, operand):
         if self.flags['zf'] == 0:
@@ -192,8 +209,6 @@ class CPU:
             res = self.registers[dest] - val
         elif desttype == 'm':
             addr = self.registers[dest]
-            if addr & 0xff000000 != TEXT:
-                raise Exception('memory access out of bounds')
             res = self.memory[addr] - val
         else:
             raise Exception('unknown dest operand type')
@@ -266,8 +281,6 @@ class CPU:
             self.registers[dest] += val
         elif desttype == 'm':
             addr = self.registers[dest]
-            if addr <= len(self.instructions):
-                raise Exception('memory access out of bounds')
             self.memory[addr] += val
         else:
             raise Exception('unknown dest operand type')
@@ -294,13 +307,10 @@ class CPU:
             raise Exception('unknown src operand type')
 
         if desttype == 'r':
-            self.registers[dest] = val & 0xffff
+            self.registers[dest] = val & 0xffffffff
         elif desttype == 'm':
             addr = self.registers[dest]
-#            print('addr is', hex(addr), file=sys.stderr)
-#            if addr & 0xff000000 != STACK:
-#                raise Exception('memory access out of bounds')
-            self.memory[addr] = val & 0xffff
+            self.memory[addr] = val & 0xffffffff
         else:
             raise Exception('unknown dest operand type')
 
@@ -308,7 +318,10 @@ class CPU:
         self.states.append(State(self.registers, self.flags, self.memory))
 
         ip = self.ip
-        instruction = self.instructions[ip]
+        self.states[-1].registers['ip'] += 1
+        instruction = self.instructions[ip - TEXT]
+        if instruction == 'nop':
+            return
         op, operands = instruction.split(maxsplit=1)
         if op == 'mov':
             self.op_mov(operands)
@@ -326,13 +339,15 @@ class CPU:
             self.op_je(operands)
         elif op == 'push':
             self.op_push(operands)
-        elif op == 'nop':
-            pass
+        elif op == 'pop':
+            self.op_pop(operands)
+        elif op == 'call':
+            self.op_call(operands)
+        elif op == 'ret':
+            self.op_ret(operands)
         else:
             raise Exception('unsupported operation "%s"' % op)
 
-        if ip == self.ip:
-            self.states[-1].registers['ip'] += 1
 
     @property
     def registers(self):
@@ -356,6 +371,7 @@ class CPU:
 
 
 def update_memory(cpu, memory_win):
+    memory_win.w.nc_w.erase()
     memory_win.addstr(0, 0, '>')
     for n in range(10):
         addr = n + cpu.sp
@@ -371,7 +387,7 @@ def update_memory(cpu, memory_win):
 def update_text(cpu, text_win):
     if not text_win.w.items:
         text_win.set(cpu.instructions)
-    text_win.w.selected = cpu.ip
+    text_win.w.set(cpu.ip - TEXT)
     text_win.refresh()
 
 
@@ -430,13 +446,13 @@ def main(stdscr):
         curses.doupdate()
         inp = stdscr.getch()
         if inp == curses.KEY_UP or inp == ord('k'):
-            if cpu.ip == 0:
+            if cpu.ip == TEXT:
                 continue
             cpu.prev()
             refresh = True
 
         elif inp == curses.KEY_DOWN or inp == ord('j'):
-            if cpu.ip + 1 == len(instructions):
+            if cpu.ip + 1 == len(instructions) + TEXT:
                 continue
             cpu.execute()
             refresh = True
@@ -551,3 +567,7 @@ if __name__ == '__main__':
 #              but two letter register names implies two byte words...
 #
 #              highlight sub(sp,16) vs push/pop strategies
+#
+#              what happens with bp?
+#
+#              signed numbers
