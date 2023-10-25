@@ -480,99 +480,26 @@ def main(stdscr):
 if __name__ == '__main__':
     wrapper(main)
 
-# Features:
-# Display asm code with addresses in a scrollable window
-# Implement c-calling convention, mov, lea, add, sub, push, pop, call, return,
-# jne, jle, jg, cmp, etc.
-# maybe some make-believe print function
-#
-# progress to a fd that you copy byte by byte to. a 'print' function would copy
-# from memory to the stdout fd until reaching \0. this means a byte by byte
-# comparison which may or may not accept a memory address. if it doesn't,
-# each byte needs to be moved to a register first
-#
-# if we accept input as an editor and input to a program, we need to make them
-# clear. maybe a 'shell' that can 'edit' files
-#
-# Read a 'program' in  asm from a file
-# Enter a 'program' manually
-# Step through each fetch-execute cycle
-# Ctrl-Z, Ctrl-R (Undo/Redo)
-# Visual state of memory and registers at all times
-# Different play speeds, or even 'breakpoints'
-# Possible to randomize address space? you'd need labels in asm right, so the
-# compiler could replace them with real addresses. in fact that's an asm vs
-# machine code
-#
-# functions return in eax (single return)
-# before you call you put arguments on the stack
-#
-# use intel asm syntax
+# New features:
 # highlight differences step by step
 # scrolling
+# dynamic resizing
+# Different play speeds, or even 'breakpoints'
+# a print function - and a stdlib concept. DOS style, load always into
+# predefined locations
+# a hello, world example
 #
-# assembly
-# mov r/m8, r8  # move r8 to r/m8
-# mov r8, r/m8  # move r/m8 to r8
-# mov r/m8, imm8  # move imm8 to r/m8
-#
-# memory window has two modes, depending on size of screen, showing more at a
-#   time
-# read every byte (two hex chars) and pass to chr; or '.'
-#   addr: b1 b2 b3 b4 b5 b6 b7 b8 .ELF....
-# restrict sizes
-# list of objects or bytestring?
-# more addressing modes
 # shift operators?
-# fix box
 # make ops a class that handles parsing and validating their arguments?
-# label support
-# indirect support
-# comment support
+# make memory a class?
 #
-# change numbering/addressing to match c layout
-#
-#              +------------------------------------+
-#              |                                    |
-# High address |                                    |
-#              |                                    |
-#              |------------------------------------|
-#              |                                    |
-#              |             Stack                  |
-#              |                                    |
-#              |- - - - - - - - - - - - - - - - - - |
-#              |               |                    |
-#              |               |                    |
-#              |               v                    |
-#              |                                    |
-#              |                                    |
-#              |                                    |
-#              |               ^                    |
-#              |               |                    |
-#              |               |                    |
-#              |- - - - - - - - - - - - - - - - - - |
-#              |                                    |
-#              |             Heap                   |
-#              |                                    |
-#              |------------------------------------|
-#              |                                    |
-#              |         Uninitialized data         |
-#              |                                    |
-#              |------------------------------------|
-#              |                                    |
-#              |         Initialized data           |
-#              |                                    |
-#              |------------------------------------|
-#              |                                    |
-# Low address  |             Text                   |
-#              |                                    |
-#              +------------------------------------+
-#
-#              there are FOUR BYTES!
-#              but two letter register names implies two byte words...
 #
 #              highlight sub(sp,16) vs push/pop strategies
-#
-#              what happens with bp?
-#
-#              signed numbers
+# TODO:
+#      what happens with bp?
+#      signed numbers
+#      indirect/pointer support
+#      strings, labels, functions, comments
+#      necessitates output pane
+#      refactor window classes
+#      fix box
