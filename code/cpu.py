@@ -10,8 +10,8 @@ from curses import wrapper
 WIN_REGISTER_WIDTH = 50
 WIN_TEXT_WIDTH = 50
 WIN_MEMORY_HEIGHT = 20
-TEXT = 0x7f000000
-STACK = 0x55000000
+TEXT = 0x7f00
+STACK = 0x5500
 
 
 class Window:
@@ -154,24 +154,27 @@ class CPU:
         self.op_jmp(operand)
 
     def op_push(self, operand):
-        # self.states[-1].registers['sp'] -= 2
         self.op_sub('sp,0x02')
         self.op_mov(f'[sp],{operand}')
 
     def op_pop(self, operand):
         self.op_mov(f'{operand},[sp]')
-        # self.states[-1].registers['sp'] += 2
         self.op_add('sp,0x02')
 
     def op_jmp(self, operand):
         dest, desttype = self.parse_operand(operand)
         if desttype == 'r':
             dest = self.registers[dest]
+            print('jmp to', hex(dest), desttype, file=sys.stderr)
         elif desttype == 'm':
             addr = self.registers[dest]
-            dest = self.memory[addr]
+            dest1 = self.memory[addr]
+            dest2 = self.memory[addr+1]
+            print('jmp adds', hex(dest1), hex(dest2), file=sys.stderr)
+            dest = (dest2 << 8) + dest1
+            print('jmp to', hex(dest), desttype, file=sys.stderr)
 
-        if dest & 0xff000000 != TEXT:
+        if dest & 0xff00 != TEXT:
             raise Exception('invalid jmp target')
 
         self.states[-1].registers['ip'] = dest
@@ -307,10 +310,11 @@ class CPU:
             raise Exception('unknown src operand type')
 
         if desttype == 'r':
-            self.registers[dest] = val & 0xffffffff
+            self.registers[dest] = val & 0xffff  # lower 2 bytes
         elif desttype == 'm':
             addr = self.registers[dest]
-            self.memory[addr] = val & 0xffffffff
+            self.memory[addr] = val & 0xff  # lower byte
+            self.memory[addr+1] = val >> 0x8  # upper byte
         else:
             raise Exception('unknown dest operand type')
 
@@ -373,14 +377,15 @@ class CPU:
 def update_memory(cpu, memory_win):
     memory_win.w.nc_w.erase()
     memory_win.addstr(0, 0, '>')
+    addr = cpu.sp
     for n in range(10):
-        addr = n + cpu.sp
         data1 = cpu.memory[addr]
-        data2 = data1
+        data2 = cpu.memory[addr+1]
         memory_win.addnstr(
                 n, 1, f'{addr:#06x}: {data1:#06x} {data2:#06x}', 70)
         if n > 10:  # TODO calculate sizing
             break
+        addr += 2
     memory_win.refresh()
 
 
