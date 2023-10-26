@@ -7,46 +7,34 @@ from collections import defaultdict
 from curses import wrapper
 
 
-WIN_REGISTER_WIDTH = 50
-WIN_TEXT_WIDTH = 50
-WIN_MEMORY_HEIGHT = 20
+WIN_REGISTER_WIDTH = 15
+WIN_TEXT_WIDTH = 35
+WIN_HEIGHT = 14
+
 TEXT = 0x7f00
 STACK = 0x5500
 
 
 class Window:
-    def __init__(self, win, *args, border=False):
-        self.nc_w = win.derwin(*args)
+    def __init__(self, parent, label, *args, border=True):
+        self.label = parent.derwin(*args)
+        self.w = self.label.derwin(4, 2)
+
+        self.label.addstr(1, 2, label, curses.color_pair(1))
+        self.selected = None
+        self.items = []
         self.border = border
         self.refresh()
 
     def refresh(self):
+        self.w.erase()
+        for n, item in enumerate(self.items):
+            self.w.addstr(n, 0, item)
+        if self.selected is not None:
+            self.w.chgat(self.selected, 0, -1, curses.A_REVERSE)
         if self.border:
-            self.nc_w.box()
-        self.nc_w.noutrefresh()
-
-    def addstr(self, *args):
-        self.nc_w.addstr(*args)
-
-    def addnstr(self, *args):
-        self.nc_w.addnstr(*args)
-
-    def clear(self):
-        self.nc_w.erase()
-        self.refresh()
-
-
-class LabelWindow:
-    def __init__(self, parent, label, *args, border=False):
-        self.label = Window(parent, *args, border=border)
-        self.label.addstr(1, 2, label, curses.color_pair(1))
-
-        self.w = Window(self.label.nc_w, 4, 2)
-        self.refresh()
-
-    def refresh(self):
-        self.label.refresh()
-        self.w.refresh()
+            self.label.box()
+        self.w.noutrefresh()
 
     def addstr(self, *args):
         self.w.addstr(*args)
@@ -54,23 +42,8 @@ class LabelWindow:
     def addnstr(self, *args):
         self.w.addnstr(*args)
 
-
-class ListLabelWindow(LabelWindow):
-    def __init__(self, parent, label, *args, border=True, items=None):
-        self.items = items or []
-        self.selected = 0
-
-        super().__init__(parent, label, *args, border=border)
-
     def setitems(self, items):
         self.items = items
-
-    def refresh(self):
-        self.w.clear()
-        for n, item in enumerate(self.items):
-            self.w.addstr(n, 0, item)
-        self.w.nc_w.chgat(self.selected, 0, -1, curses.A_REVERSE)
-        self.w.refresh()
 
     def select(self, sel):
         if sel > len(self.items) or sel < 0:
@@ -418,17 +391,16 @@ def parse_operands(operands, labels=None):
 
 
 def update_memory(cpu, memory_win):
-    memory_win.w.nc_w.erase()
+    memory_win.w.erase()
     memory_win.addstr(0, 0, '>')
     addr = cpu.sp
+    memory = []
     for n in range(10):
         data1 = cpu.memory[addr]
         data2 = cpu.memory[addr+1]
-        memory_win.addnstr(
-                n, 1, f'{addr:#06x}: {data1:#06x} {data2:#06x}', 70)
-        if n > 10:  # TODO calculate sizing
-            break
+        memory.append(f'{addr:#06x}: {data1:#06x} {data2:#06x}')
         addr += 2
+    memory_win.setitems(memory)
     memory_win.refresh()
 
 
@@ -446,12 +418,14 @@ def update_text(cpu, text_win, program, labels):
 
 
 def update_registers(cpu, register_win):
+    registers = []
     for n, reg in enumerate(cpu.registers):
-        register_win.addstr(n, 0, f'{reg}: {cpu.registers[reg]:#06x}')
+        registers.append(f'{reg}: {cpu.registers[reg]:#06x}')
 
     for m, flag in enumerate(cpu.flags):
-        register_win.addstr(m + n + 2, 0,
-                            f'{flag}: {cpu.flags[flag]}')
+        registers.append(f'{flag}: {cpu.flags[flag]}')
+
+    register_win.setitems(registers)
     register_win.refresh()
 
 
@@ -459,29 +433,35 @@ def main(stdscr):
     stdscr.clear()
 
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
-    curses.curs_set(0)
+    curses.curs_set(0)  # hide cursor
 
-    register_win = LabelWindow(
+    minwidth = WIN_REGISTER_WIDTH + WIN_TEXT_WIDTH
+    minheight = WIN_HEIGHT * 2
+    if curses.COLS < minwidth or curses.LINES < minheight:
+        raise Exception('window too small - %dx%d is less than minimum %dx%d'
+                        % (curses.COLS, curses.LINES, minwidth, minheight))
+
+    register_win = Window(
             stdscr, 'Registers',
-            curses.LINES - WIN_MEMORY_HEIGHT,
+            curses.LINES - WIN_HEIGHT,
             0,
             0,
             curses.COLS - WIN_REGISTER_WIDTH,
             border=True)
 
-    text_win = ListLabelWindow(
+    text_win = Window(
             stdscr, 'Text',
-            curses.LINES - WIN_MEMORY_HEIGHT,
+            curses.LINES - WIN_HEIGHT,
             curses.COLS - WIN_REGISTER_WIDTH,
             0,
             0,
             border=True)
 
-    memory_win = LabelWindow(
+    memory_win = Window(
             stdscr, 'Stack',
-            WIN_MEMORY_HEIGHT,
+            WIN_HEIGHT,
             0,
-            curses.LINES - WIN_MEMORY_HEIGHT,
+            curses.LINES - WIN_HEIGHT,
             0,
             border=True)
 
@@ -549,16 +529,10 @@ if __name__ == '__main__':
 #      what happens with bp?
 #      signed numbers
 #      indirect/pointer support
-#      strings, labels, functions, comments
-#      necessitates output pane
-#      refactor window classes
+#      strings / initialized data
+#      in/out instructions (necessitates I/O pane)
 #      fix box
 #      make program with real value
-#
-# Window (our class, contains nc_window)
-# LabelWindow (our class, contains two Windows)
-# ListLabelWindow (our class, subclass LabelWindow with a set of items and
-#     automatic management of them)
 #
 # ---
 #
@@ -567,12 +541,9 @@ if __name__ == '__main__':
 # RegisterWindow (subclass LabelWindow with ref to cpu, reflects cpu.registers)
 # use super() as needed
 #
-# code outside cpu shouldn't reference TEXT/STACK
+# code outside cpu shouldn't reference TEXT/STACK ?
 #
-# labels should be rewritten into addresses as part of preprocessing; but we
-# read code line at a time for now
-#
-# exception types and tests
+# custom exception types and tests
 #
 # in can only write to eax; can only read a port number from an immediate or
 # from dx
@@ -583,3 +554,11 @@ if __name__ == '__main__':
 #
 # swaps may mean using nc.panel?
 # yes, classes for instructions / operators / operands
+#
+# resizing: display error if screen is too small
+# switch layouts?
+# minimimum height & width for each
+# let's start there
+#
+# bold window names
+# colored outputs
