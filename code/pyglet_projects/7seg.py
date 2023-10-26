@@ -28,7 +28,7 @@ WHITE = (128, 128, 128)
 RED = (255, 0, 0)
 
 SEGMENTS = [
-    'abcdefg',  # 0
+    'abcdef',  # 0
     'bc',       # 1
     'abdeg',    # 2
     'abcdg',    # 3
@@ -147,7 +147,6 @@ class Display:
       idx = idx + 1
 
   def update(self, dt):
-    print('update was called with val', dt)
     for segment in self.segments.values():
       segment.off()
     self.number = (self.number + 1) % 10
