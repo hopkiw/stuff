@@ -80,17 +80,7 @@ class ListLabelWindow(LabelWindow):
 
 class State:
     def __init__(self, registers=None, flags=None, memory=None):
-        self.registers = {
-                'ax': 0,
-                'bx': 0,
-                'cx': 0,
-                'dx': 0,
-                'si': 0,  # string source
-                'di': 0,  # string dest
-                'ip': 0,  # TODO: make ro
-                'bp': 0,
-                'sp': 0,
-                }
+        self.registers = {reg: 0 for reg in CPU._registers}
         if registers:
             self.registers.update(registers)
         self.flags = {
@@ -105,101 +95,54 @@ class State:
 
 
 class CPU:
-    def __init__(self, program):
-        self.labels = {}
-        self.instructions = []
+    _registers = ['ax', 'bx', 'cx', 'dx', 'si', 'di', 'ip', 'bp', 'sp']
+
+    def __init__(self, program, offset=0):
+        self.instructions = program
         self.states = [State()]
         self.states[-1].registers['sp'] = STACK
         self.states[-1].registers['bp'] = STACK
 
-        self.parse_program(program)
-        self.states[-1].registers['ip'] = self.labels['_start'] + TEXT
+        self._fix_offsets()
+        self.states[-1].registers['ip'] = offset + TEXT
+
+    def _fix_offsets(self):
+        for i in range(len(self.instructions)):
+            op, operands = self.instructions[i]
+            new_operands = []
+            for operand in operands:
+                operand, optype = operand
+                if optype == 'l':
+                    operand = operand + TEXT
+                    optype = 'i'
+                new_operands.append((operand, optype))
+            self.instructions[i] = (op, new_operands)
 
     def prev(self):
-        self.states.pop()
-
-    def parse_program(self, program):
-        instructions = []
-        n = 0
-        for line in program:
-            line = line.split(';')[0].strip()
-            if not line:
-                continue
-
-            if line.endswith(':'):
-                self.labels[line[:-1]] = n  # + TEXT
-            else:
-                instructions.append(line)
-                n += 1
-
-        if '_start' not in self.labels:
-            self.labels['_start'] = TEXT
-
-        for n, instruction in enumerate(instructions):
-            instruction = instruction.split(maxsplit=1)
-            if len(instruction) < 2:
-                instruction = instruction[0]
-                if instruction not in ['nop', 'ret']:
-                    raise Exception('invalid instruction: %s requires operands'
-                                    % instruction)
-                self.instructions.append((instruction, tuple()))
-            else:
-                op, operands = instruction
-                self.instructions.append((op, self.parse_operands(operands)))
-
-    def parse_operands(self, operands):
-        operand_pairs = []
-        for operand in operands.split(','):
-            operand, optype = self.parse_operand(operand)
-            if optype == 'l':  # labels are handled in preprocessing
-                operand = self.labels[operand] + TEXT
-                optype = 'i'
-            operand_pairs.append((operand, optype))
-
-        return operand_pairs
-
-    def parse_operand(self, op):
-        optype = None
-        op = op.strip()
-        if op in self.labels:
-            val = op
-            optype = 'l'
-        elif len(op) == 2 and op.isalpha() and op in self.registers:
-            val = op
-            optype = 'r'
-        elif len(op) == 4 and op[0] == '[' and op[-1] == ']':
-            val = op[1:-1]
-            optype = 'm'
-        else:
-            try:
-                val = int(op, 16)
-                optype = 'i'
-            except ValueError:
-                print('labels are', self.labels, file=sys.stderr)
-                raise Exception('invalid operand "%s"' % op)
-
-        return (val, optype)
+        if len(self.states) > 1:
+            self.states.pop()
 
     def op_ret(self, _):
-        self.op_jmp(self.parse_operands('[sp]'))
-        self.op_add(self.parse_operands('sp,0x02'))
+        # annoying use of asm which cpu should not know much about - will
+        # replace with operand classes
+        self.op_jmp(parse_operands('[sp]'))
+        self.op_add(parse_operands('sp,0x02'))
 
     def op_call(self, operand):
-        self.op_push(self.parse_operands('ip'))
+        self.op_push(parse_operands('ip'))
         self.op_jmp(operand)
 
     def op_push(self, operand):
-        self.op_sub(self.parse_operands('sp,0x02'))
-        stack = self.parse_operand('[sp]')
-        self.op_mov((stack, operand[0]))
+        self.op_sub(parse_operands('sp,0x02'))
+        stack = parse_operands('[sp]')
+        self.op_mov((stack[0], operand[0]))
 
     def op_pop(self, operand):
-        stack = self.parse_operand('[sp]')
-        self.op_mov((operand[0], stack))
-        self.op_add(self.parse_operands('sp,0x02'))
+        stack = parse_operands('[sp]')
+        self.op_mov((operand[0], stack[0]))
+        self.op_add(parse_operands('sp,0x02'))
 
     def op_jmp(self, operand):
-        print('jmp', operand, file=sys.stderr)
         dest, desttype = operand[0]
         if desttype == 'r':
             dest = self.registers[dest]
@@ -210,10 +153,8 @@ class CPU:
             dest = (dest2 << 8) + dest1
 
         if dest & 0xff00 != TEXT:
-            print('dest is', dest, file=sys.stderr)
             raise Exception('invalid jmp target')
 
-        # print('labels are', self.labels, file=sys.stderr)
         self.states[-1].registers['ip'] = dest
 
     def op_jne(self, operand):
@@ -326,7 +267,6 @@ class CPU:
             raise Exception('unknown dest operand type')
 
     def op_mov(self, operands):
-        print('mov', operands, file=sys.stderr)
         dest, src = operands
 
         dest, desttype = dest
@@ -386,9 +326,6 @@ class CPU:
         elif op == 'ret':
             self.op_ret(operands)
         else:
-            print('cpu.ip', self.ip, file=sys.stderr)
-            print('op', op, file=sys.stderr)
-            print('operands', operands, file=sys.stderr)
             raise Exception('unsupported operation "%s"' % op)
 
     @property
@@ -412,6 +349,74 @@ class CPU:
         return self.registers['sp']
 
 
+def parse_program(program):
+    instructions = []
+    labels = {}
+    n = 0
+    for line in program:
+        line = line.split(';')[0].strip()
+        if not line:
+            continue
+
+        if line.endswith(':'):
+            labels[line[:-1]] = n  # + TEXT
+        else:
+            instructions.append(line)
+            n += 1
+
+    if '_start' not in labels:
+        labels['_start'] = TEXT
+
+    return instructions, labels
+
+
+def parse_instructions(instructions, labels):
+    new_instructions = []
+    for n, instruction in enumerate(instructions):
+        instruction = instruction.split(maxsplit=1)
+        if len(instruction) < 2:
+            instruction = instruction[0]
+            if instruction not in ['nop', 'ret']:
+                raise Exception('invalid instruction: %s requires operands'
+                                % instruction)
+            new_instructions.append((instruction, tuple()))
+        else:
+            op, operands = instruction
+            operands = parse_operands(operands, labels)
+            new_instructions.append((op, operands))
+
+    return new_instructions
+
+
+def parse_operands(operands, labels=None):
+    if not labels:
+        labels = tuple()
+
+    operand_pairs = []
+    for op in operands.split(','):
+        optype = None
+        op = op.strip()
+        if op in labels:
+            val = labels[op]
+            optype = 'l'
+        elif len(op) == 2 and op.isalpha() and op in CPU._registers:
+            val = op
+            optype = 'r'
+        elif len(op) == 4 and op[0] == '[' and op[-1] == ']':
+            val = op[1:-1]
+            optype = 'm'
+        else:
+            try:
+                val = int(op, 16)
+                optype = 'i'
+            except ValueError:
+                raise Exception('invalid operand "%s"' % op)
+
+        operand_pairs.append((val, optype))
+
+    return operand_pairs
+
+
 def update_memory(cpu, memory_win):
     memory_win.w.nc_w.erase()
     memory_win.addstr(0, 0, '>')
@@ -427,18 +432,15 @@ def update_memory(cpu, memory_win):
     memory_win.refresh()
 
 
-def update_text(cpu, text_win):
+def update_text(cpu, text_win, program, labels):
     if not text_win.items:
         formatted = []
-        for addr, i in enumerate(cpu.instructions):
+        for addr, i in enumerate(program):
             formatted.append(f'{addr + TEXT:#06x}: {i}')
         text_win.setitems(formatted)
-        print('labels are', {x: hex(y) for x, y in cpu.labels.items()},
-              file=sys.stderr)
-        for label, addr in cpu.labels.items():
+        for label, addr in labels.items():
             orig = text_win.items[addr]
             text_win.items[addr] = f'{orig}  # {label}'
-    print('cpu.ip', cpu.ip, file=sys.stderr)
     text_win.select(cpu.ip - TEXT)
     text_win.refresh()
 
@@ -485,11 +487,14 @@ def main(stdscr):
 
     fn = sys.argv[1] if len(sys.argv) > 1 else 'asm.txt'
     with open(fn, 'r') as fh:
-        program = fh.read().splitlines()
+        lines = fh.read().splitlines()
 
-    cpu = CPU(program)
+    instructions, labels = parse_program(lines)
+    program = parse_instructions(instructions, labels)
 
-    update_text(cpu, text_win)
+    cpu = CPU(program, labels['_start'])
+
+    update_text(cpu, text_win, instructions, labels)
     update_memory(cpu, memory_win)
     update_registers(cpu, register_win)
 
@@ -498,8 +503,6 @@ def main(stdscr):
         curses.doupdate()
         inp = stdscr.getch()
         if inp == curses.KEY_UP or inp == ord('k'):
-            if cpu.ip == TEXT:
-                continue
             cpu.prev()
             refresh = True
 
@@ -518,7 +521,7 @@ def main(stdscr):
             return
 
         if refresh:
-            update_text(cpu, text_win)
+            update_text(cpu, text_win, program, labels)
             update_memory(cpu, memory_win)
             update_registers(cpu, register_win)
             refresh = False
