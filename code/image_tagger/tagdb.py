@@ -5,7 +5,7 @@ import sys
 
 # TODO: cache known tags so we don't have to keep checking
 # TODO: support add/remove multiple tags at a time
-DEF_FILENAME = 'tutorial.db'
+DEF_FILENAME = 'images.sqlite'
 
 
 class TagDB:

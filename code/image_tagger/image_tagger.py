@@ -6,7 +6,7 @@ import sys
 from tagdb import TagDB
 
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk, GdkPixbuf  # noqa: E402
+from gi.repository import Gtk, Gdk, GdkPixbuf, GLib  # noqa: E402
 
 GLADE_PATH = 'image_tagger.glade'
 
@@ -22,6 +22,7 @@ class MainApp:
     self.builder.add_from_file(GLADE_PATH)
 
     self.tag_store = self.builder.get_object('tag_store')
+    self.stack = self.builder.get_object('stack')
 
     self.all_tags_store = self.builder.get_object('all_tags_store')
     for tag in self.db.all_tags():
@@ -35,6 +36,9 @@ class MainApp:
     completion.set_text_column(0)
 
     self.image = self.builder.get_object('image')
+    self.size_label = self.builder.get_object('size_label')
+    self.filename_label = self.builder.get_object('filename_label')
+    self.fullsize_label = self.builder.get_object('fullsize_label')
 
     self.window = self.builder.get_object('main_window')
     self.window.connect('key-press-event', self.key_press_event)
@@ -46,12 +50,20 @@ class MainApp:
   def run(self):
     Gtk.main()
 
+  def restore(self):
+    self.builder.get_object('tag_entry').show()
+    return False
+
   def tag_entry_activated(self, entry):
     text = entry.get_text()
     entry.delete_text(0, -1)
 
     if not text:
       return
+
+    if text == 'clear':
+      from IPython import embed;embed()
+      # self.stack.set_visible_child_name('page1')
 
     if text not in self.all_tags(self.tag_store):
       self.tag_store.append((text,))
@@ -69,6 +81,7 @@ class MainApp:
     return res
 
   def update(self):
+    self.filename_label.set_text(self.filename)
     self.tag_store.clear()
     tags = self.db.get_tags(self.filename)
     for tag in tags:
@@ -96,6 +109,8 @@ class MainApp:
                                  GdkPixbuf.InterpType.BILINEAR)
     self.image.clear()
     self.image.set_from_pixbuf(pixbuf)
+    self.size_label.set_text(f'{pixbuf_width}x{pixbuf_height}')
+    self.fullsize_label.set_text(f'{new_width}x{new_height}')
 
   def key_press_event(self, widget, event):
     keyval = event.keyval
