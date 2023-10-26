@@ -37,8 +37,8 @@ class Window:
 
 
 class LabelWindow:
-    def __init__(self, win, label, *args, border=False):
-        self.label = Window(win, *args, border=border)
+    def __init__(self, parent, label, *args, border=False):
+        self.label = Window(parent, *args, border=border)
         self.label.addstr(1, 2, label, curses.color_pair(1))
 
         self.w = Window(self.label.nc_w, 4, 2)
@@ -56,31 +56,23 @@ class LabelWindow:
 
 
 class ListLabelWindow(LabelWindow):
-    def __init__(self, win, label, *args, border=False):
-        self.label = Window(win, *args, border=border)
-        self.label.addstr(1, 2, label, curses.color_pair(1))
-
-        self.w = ListWindow(Window(self.label.nc_w, 4, 2))
-        self.refresh()
-
-    def set(self, items):
-        self.w.items = items
-
-
-class ListWindow:
-    def __init__(self, win, items=None):
-        self.w = win
+    def __init__(self, parent, label, *args, border=True, items=None):
         self.items = items or []
         self.selected = 0
+
+        super().__init__(parent, label, *args, border=border)
+
+    def setitems(self, items):
+        self.items = items
 
     def refresh(self):
         self.w.clear()
         for n, item in enumerate(self.items):
-            self.w.addstr(n, 0, f'{n + TEXT:#0x}: {item}')
+            self.w.addstr(n, 0, item)
         self.w.nc_w.chgat(self.selected, 0, -1, curses.A_REVERSE)
         self.w.refresh()
 
-    def set(self, sel):
+    def select(self, sel):
         if sel > len(self.items) or sel < 0:
             raise Exception('index out of range')
         self.selected = sel
@@ -95,9 +87,9 @@ class State:
                 'dx': 0,
                 'si': 0,  # string source
                 'di': 0,  # string dest
-                'ip': TEXT,  # TODO: make ro
-                'bp': STACK,
-                'sp': STACK,
+                'ip': 0,  # TODO: make ro
+                'bp': 0,
+                'sp': 0,
                 }
         if registers:
             self.registers.update(registers)
@@ -113,70 +105,115 @@ class State:
 
 
 class CPU:
-    def __init__(self, instructions):
-        self.instructions = instructions
+    def __init__(self, program):
+        self.labels = {}
+        self.instructions = []
         self.states = [State()]
         self.states[-1].registers['sp'] = STACK
+        self.states[-1].registers['bp'] = STACK
+
+        self.parse_program(program)
+        self.states[-1].registers['ip'] = self.labels['_start'] + TEXT
 
     def prev(self):
         self.states.pop()
 
-    def is_valid(self, operand):
-        pass
-    # maybe central boundary validation
+    def parse_program(self, program):
+        instructions = []
+        n = 0
+        for line in program:
+            line = line.split(';')[0].strip()
+            if not line:
+                continue
+
+            if line.endswith(':'):
+                self.labels[line[:-1]] = n  # + TEXT
+            else:
+                instructions.append(line)
+                n += 1
+
+        if '_start' not in self.labels:
+            self.labels['_start'] = TEXT
+
+        for n, instruction in enumerate(instructions):
+            instruction = instruction.split(maxsplit=1)
+            if len(instruction) < 2:
+                instruction = instruction[0]
+                if instruction not in ['nop', 'ret']:
+                    raise Exception('invalid instruction: %s requires operands'
+                                    % instruction)
+                self.instructions.append((instruction, tuple()))
+            else:
+                op, operands = instruction
+                self.instructions.append((op, self.parse_operands(operands)))
+
+    def parse_operands(self, operands):
+        operand_pairs = []
+        for operand in operands.split(','):
+            operand, optype = self.parse_operand(operand)
+            if optype == 'l':  # labels are handled in preprocessing
+                operand = self.labels[operand] + TEXT
+                optype = 'i'
+            operand_pairs.append((operand, optype))
+
+        return operand_pairs
 
     def parse_operand(self, op):
         optype = None
-        try:
-            val = int(op, 16)
-            optype = 'i'
-        except ValueError:
-            pass
-
-        if not optype:
-            if len(op) == 2 and op.isalpha() and op in self.registers:
-                val = op
-                optype = 'r'
-            elif len(op) == 4 and op[0] == '[' and op[-1] == ']':
-                val = op[1:-1]
-                optype = 'm'
-            else:
+        op = op.strip()
+        if op in self.labels:
+            val = op
+            optype = 'l'
+        elif len(op) == 2 and op.isalpha() and op in self.registers:
+            val = op
+            optype = 'r'
+        elif len(op) == 4 and op[0] == '[' and op[-1] == ']':
+            val = op[1:-1]
+            optype = 'm'
+        else:
+            try:
+                val = int(op, 16)
+                optype = 'i'
+            except ValueError:
+                print('labels are', self.labels, file=sys.stderr)
                 raise Exception('invalid operand "%s"' % op)
 
         return (val, optype)
 
     def op_ret(self, _):
-        self.op_jmp('[sp]')
-        self.op_add('sp,0x02')
+        self.op_jmp(self.parse_operands('[sp]'))
+        self.op_add(self.parse_operands('sp,0x02'))
 
     def op_call(self, operand):
-        self.op_push('ip')
+        self.op_push(self.parse_operands('ip'))
         self.op_jmp(operand)
 
     def op_push(self, operand):
-        self.op_sub('sp,0x02')
-        self.op_mov(f'[sp],{operand}')
+        self.op_sub(self.parse_operands('sp,0x02'))
+        stack = self.parse_operand('[sp]')
+        self.op_mov((stack, operand[0]))
 
     def op_pop(self, operand):
-        self.op_mov(f'{operand},[sp]')
-        self.op_add('sp,0x02')
+        stack = self.parse_operand('[sp]')
+        self.op_mov((operand[0], stack))
+        self.op_add(self.parse_operands('sp,0x02'))
 
     def op_jmp(self, operand):
-        dest, desttype = self.parse_operand(operand)
+        print('jmp', operand, file=sys.stderr)
+        dest, desttype = operand[0]
         if desttype == 'r':
             dest = self.registers[dest]
-            print('jmp to', hex(dest), desttype, file=sys.stderr)
         elif desttype == 'm':
             addr = self.registers[dest]
             dest1 = self.memory[addr]
             dest2 = self.memory[addr+1]
-            print('jmp adds', hex(dest1), hex(dest2), file=sys.stderr)
             dest = (dest2 << 8) + dest1
-            print('jmp to', hex(dest), desttype, file=sys.stderr)
 
         if dest & 0xff00 != TEXT:
+            print('dest is', dest, file=sys.stderr)
             raise Exception('invalid jmp target')
 
+        # print('labels are', self.labels, file=sys.stderr)
         self.states[-1].registers['ip'] = dest
 
     def op_jne(self, operand):
@@ -188,10 +225,10 @@ class CPU:
             self.op_jmp(operand)
 
     def op_cmp(self, operands):
-        dest, src = operands.split(',')
+        dest, src = operands
 
-        dest, desttype = self.parse_operand(dest)
-        src, srctype = self.parse_operand(src)
+        dest, desttype = dest
+        src, srctype = src
 
         if srctype == 'm' and desttype == 'm':
             raise Exception('invalid source,dest pair (%s)' % (operands))
@@ -222,10 +259,10 @@ class CPU:
             self.states[-1].flags['zf'] = 0
 
     def op_sub(self, operands):
-        dest, src = operands.split(',')
+        dest, src = operands
 
-        dest, desttype = self.parse_operand(dest)
-        src, srctype = self.parse_operand(src)
+        dest, desttype = dest
+        src, srctype = src
 
         if srctype == 'm' and desttype == 'm':
             raise Exception('invalid source,dest pair (%s)' % (operands))
@@ -260,10 +297,10 @@ class CPU:
             self.flags['zf'] = 0
 
     def op_add(self, operands):
-        dest, src = operands.split(',')
+        dest, src = operands
 
-        dest, desttype = self.parse_operand(dest)
-        src, srctype = self.parse_operand(src)
+        dest, desttype = dest
+        src, srctype = src
 
         if srctype == 'm' and desttype == 'm':
             raise Exception('invalid source,dest pair (%s)' % (operands))
@@ -289,10 +326,11 @@ class CPU:
             raise Exception('unknown dest operand type')
 
     def op_mov(self, operands):
-        dest, src = operands.split(',')
+        print('mov', operands, file=sys.stderr)
+        dest, src = operands
 
-        dest, desttype = self.parse_operand(dest)
-        src, srctype = self.parse_operand(src)
+        dest, desttype = dest
+        src, srctype = src
 
         if srctype == 'm' and desttype == 'm':
             raise Exception('invalid source,dest pair (%s)' % (operands))
@@ -323,10 +361,8 @@ class CPU:
 
         ip = self.ip
         self.states[-1].registers['ip'] += 1
-        instruction = self.instructions[ip - TEXT]
-        if instruction == 'nop':
-            return
-        op, operands = instruction.split(maxsplit=1)
+        op, operands = self.instructions[ip - TEXT]
+        # TODO: membership list vs elif chain
         if op == 'mov':
             self.op_mov(operands)
         elif op == 'add':
@@ -350,8 +386,10 @@ class CPU:
         elif op == 'ret':
             self.op_ret(operands)
         else:
+            print('cpu.ip', self.ip, file=sys.stderr)
+            print('op', op, file=sys.stderr)
+            print('operands', operands, file=sys.stderr)
             raise Exception('unsupported operation "%s"' % op)
-
 
     @property
     def registers(self):
@@ -390,9 +428,18 @@ def update_memory(cpu, memory_win):
 
 
 def update_text(cpu, text_win):
-    if not text_win.w.items:
-        text_win.set(cpu.instructions)
-    text_win.w.set(cpu.ip - TEXT)
+    if not text_win.items:
+        formatted = []
+        for addr, i in enumerate(cpu.instructions):
+            formatted.append(f'{addr + TEXT:#06x}: {i}')
+        text_win.setitems(formatted)
+        print('labels are', {x: hex(y) for x, y in cpu.labels.items()},
+              file=sys.stderr)
+        for label, addr in cpu.labels.items():
+            orig = text_win.items[addr]
+            text_win.items[addr] = f'{orig}  # {label}'
+    print('cpu.ip', cpu.ip, file=sys.stderr)
+    text_win.select(cpu.ip - TEXT)
     text_win.refresh()
 
 
@@ -438,9 +485,9 @@ def main(stdscr):
 
     fn = sys.argv[1] if len(sys.argv) > 1 else 'asm.txt'
     with open(fn, 'r') as fh:
-        instructions = fh.read().splitlines()
+        program = fh.read().splitlines()
 
-    cpu = CPU(instructions)
+    cpu = CPU(program)
 
     update_text(cpu, text_win)
     update_memory(cpu, memory_win)
@@ -457,7 +504,7 @@ def main(stdscr):
             refresh = True
 
         elif inp == curses.KEY_DOWN or inp == ord('j'):
-            if cpu.ip + 1 == len(instructions) + TEXT:
+            if cpu.ip + 1 == len(cpu.instructions) + TEXT:
                 continue
             cpu.execute()
             refresh = True
@@ -503,3 +550,33 @@ if __name__ == '__main__':
 #      necessitates output pane
 #      refactor window classes
 #      fix box
+#      make program with real value
+#
+# Window (our class, contains nc_window)
+# LabelWindow (our class, contains two Windows)
+# ListLabelWindow (our class, subclass LabelWindow with a set of items and
+#     automatic management of them)
+#
+# ---
+#
+# TextWindow (subclass LabelWindow with ref to cpu, reflects cpu.instructions)
+# MemoryWindow (subclass LabelWindow with ref to cpu, reflects cpu.memory)
+# RegisterWindow (subclass LabelWindow with ref to cpu, reflects cpu.registers)
+# use super() as needed
+#
+# code outside cpu shouldn't reference TEXT/STACK
+#
+# labels should be rewritten into addresses as part of preprocessing; but we
+# read code line at a time for now
+#
+# exception types and tests
+#
+# in can only write to eax; can only read a port number from an immediate or
+# from dx
+#
+# show labeled / swap to real addresses
+# show comments
+# swap between parsed and original source code representations
+#
+# swaps may mean using nc.panel?
+# yes, classes for instructions / operators / operands
