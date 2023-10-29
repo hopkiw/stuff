@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import curses
+import curses.panel
 import sys
+import traceback
 
 from collections import defaultdict
 from curses import wrapper
@@ -14,27 +16,55 @@ WIN_HEIGHT = 14
 TEXT = 0x7f00
 STACK = 0x5500
 
+debug = True
+
+
+def err(*args):
+    if debug:
+        print(*args, file=sys.stderr)
+
 
 class Window:
-    def __init__(self, parent, label, *args, border=True):
-        self.label = parent.derwin(*args)
-        self.w = self.label.derwin(4, 2)
+    def __init__(self, title, nlines, ncols, begin_y, begin_x):
+        err(f'Window(.., {title}, {nlines}, {ncols}, {begin_y}, {begin_x}')
+        self.title = title
 
-        self.label.addstr(1, 2, label, curses.color_pair(1))
+        self.frame = curses.newwin(0, 0)
+        self.frame_panel = curses.panel.new_panel(self.frame)
+
+        self.w = curses.newwin(0, 0)
+        self.w_panel = curses.panel.new_panel(self.w)
+
         self.selected = None
         self.items = []
-        self.border = border
+
+        # self.refresh()
+        self.resize(nlines, ncols, begin_y, begin_x)
+
+    def resize(self, n_lines, n_cols, start_y, start_x):
+        self.frame.resize(n_lines, n_cols)
+        self.frame_panel.move(start_y, start_x)
+        self.frame.erase()
+        self.frame.addstr(1, 2, self.title, curses.color_pair(1))
+
+        self.w.resize(n_lines - 5, n_cols - 4)
+        self.w_panel.move(start_y + 4, start_x + 2)
+
         self.refresh()
 
     def refresh(self):
+        self.frame.box()
+        self.frame.noutrefresh()
+
         self.w.erase()
+        max_y, max_x = self.w.getmaxyx()
         for n, item in enumerate(self.items):
-            self.w.addstr(n, 0, item)
-        if self.selected is not None:
+            if n >= max_y:
+                break
+            self.w.addnstr(n, 0, item, max_x)
+
+        if self.selected is not None and self.selected < max_y:
             self.w.chgat(self.selected, 0, -1, curses.A_REVERSE)
-        if self.border:
-            self.label.box()
-        self.w.noutrefresh()
 
     def addstr(self, *args):
         self.w.addstr(*args)
@@ -44,6 +74,7 @@ class Window:
 
     def setitems(self, items):
         self.items = items
+        self.refresh()
 
     def select(self, sel):
         if sel > len(self.items) or sel < 0:
@@ -96,7 +127,7 @@ class CPU:
             self.states.pop()
 
     def op_ret(self, _):
-        # annoying use of asm which cpu should not know much about - will
+        # TODO: annoying use of asm which cpu should not know much about - will
         # replace with operand classes
         self.op_jmp(parse_operands('[sp]'))
         self.op_add(parse_operands('sp,0x02'))
@@ -264,6 +295,7 @@ class CPU:
             self.registers[dest] = val & 0xffff  # lower 2 bytes
         elif desttype == 'm':
             addr = self.registers[dest]
+            val = val & 0xffff
             self.memory[addr] = val & 0xff  # lower byte
             self.memory[addr+1] = val >> 0x8  # upper byte
         else:
@@ -395,13 +427,13 @@ def update_memory(cpu, memory_win):
     memory_win.addstr(0, 0, '>')
     addr = cpu.sp
     memory = []
-    for n in range(10):
+    for n in range(14):
         data1 = cpu.memory[addr]
         data2 = cpu.memory[addr+1]
-        memory.append(f'{addr:#06x}: {data1:#06x} {data2:#06x}')
+        memory.append(f'{addr:#06x}: {data1:#04x} {data2:#04x}')
         addr += 2
+
     memory_win.setitems(memory)
-    memory_win.refresh()
 
 
 def update_text(cpu, text_win, program, labels):
@@ -409,10 +441,11 @@ def update_text(cpu, text_win, program, labels):
         formatted = []
         for addr, i in enumerate(program):
             formatted.append(f'{addr + TEXT:#06x}: {i}')
-        text_win.setitems(formatted)
         for label, addr in labels.items():
-            orig = text_win.items[addr]
-            text_win.items[addr] = f'{orig}  # {label}'
+            orig = formatted[addr]
+            formatted[addr] = f'{orig}  # {label}'
+        text_win.setitems(formatted)
+
     text_win.select(cpu.ip - TEXT)
     text_win.refresh()
 
@@ -426,44 +459,68 @@ def update_registers(cpu, register_win):
         registers.append(f'{flag}: {cpu.flags[flag]}')
 
     register_win.setitems(registers)
-    register_win.refresh()
+
+
+class RegisterWindow(Window):
+    def refresh(self):
+        super().refresh()
+
+
+class MemoryWindow(Window):
+    def refresh(self):
+        super().refresh()
+
+
+class TextWindow(Window):
+    def refresh(self):
+        super().refresh()
 
 
 def main(stdscr):
+    err_win_panel = None
+
     stdscr.clear()
 
     curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
+    curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.curs_set(0)  # hide cursor
 
     minwidth = WIN_REGISTER_WIDTH + WIN_TEXT_WIDTH
     minheight = WIN_HEIGHT * 2
+
     if curses.COLS < minwidth or curses.LINES < minheight:
         raise Exception('window too small - %dx%d is less than minimum %dx%d'
                         % (curses.COLS, curses.LINES, minwidth, minheight))
 
-    register_win = Window(
-            stdscr, 'Registers',
-            curses.LINES - WIN_HEIGHT,
-            0,
-            0,
-            curses.COLS - WIN_REGISTER_WIDTH,
-            border=True)
+    max_y, max_x = stdscr.getmaxyx()
+    lower_win_height = max(WIN_HEIGHT, max_y // 3)
 
-    text_win = Window(
-            stdscr, 'Text',
-            curses.LINES - WIN_HEIGHT,
-            curses.COLS - WIN_REGISTER_WIDTH,
-            0,
-            0,
-            border=True)
-
+    # Memory window: entire lower region
+    # So we can use auto-sizing and only need to determine start_y
     memory_win = Window(
-            stdscr, 'Stack',
-            WIN_HEIGHT,
+            'Stack',
+            lower_win_height,
+            curses.COLS,
+            curses.LINES - lower_win_height,
+            0)
+
+    upper_win_width = max(WIN_REGISTER_WIDTH, max_x // 3)
+
+    # Text window: left 2/3rds of upper region.
+    text_win = Window(
+            'Text',
+            curses.LINES - lower_win_height,
+            curses.COLS - upper_win_width,
             0,
-            curses.LINES - WIN_HEIGHT,
+            0)
+
+    # Register window: right 1/3rd of upper region.
+    register_win = Window(
+            'Registers',
+            curses.LINES - lower_win_height,
+            curses.COLS - (curses.COLS - upper_win_width),
             0,
-            border=True)
+            curses.COLS - upper_win_width)
 
     fn = sys.argv[1] if len(sys.argv) > 1 else 'asm.txt'
     with open(fn, 'r') as fh:
@@ -474,41 +531,88 @@ def main(stdscr):
 
     cpu = CPU(program, labels['_start'])
 
-    update_text(cpu, text_win, instructions, labels)
-    update_memory(cpu, memory_win)
-    update_registers(cpu, register_win)
-
-    refresh = False
+    refresh = True
+    parse_mode = False
     while True:
+        if refresh:
+            update_text(cpu, text_win, program if parse_mode else instructions,
+                        labels)
+            update_memory(cpu, memory_win)
+            update_registers(cpu, register_win)
+            refresh = False
+
+        curses.panel.update_panels()
         curses.doupdate()
+
         inp = stdscr.getch()
         if inp == curses.KEY_UP or inp == ord('k'):
+            if err_win_panel is not None:
+                continue
             cpu.prev()
             refresh = True
 
         elif inp == curses.KEY_DOWN or inp == ord('j'):
+            if err_win_panel is not None:
+                continue
             if cpu.ip + 1 == len(cpu.instructions) + TEXT:
                 continue
             cpu.execute()
             refresh = True
 
         elif inp == curses.KEY_RESIZE:
-            # TODO: implement resizing
-            memory_win.addstr(3, 2, f'RESIZED!: {inp}')
-            memory_win.refresh()
+            stdscr.erase()
+            stdscr.noutrefresh()
+
+            max_y, max_x = stdscr.getmaxyx()
+            lower_win_height = max(WIN_HEIGHT, max_y // 3)
+            upper_win_width = max(WIN_REGISTER_WIDTH, max_x // 3)
+            err('stdscr is now', (max_y, max_x))
+
+            if (
+                    max_y < (2 * WIN_HEIGHT)
+                    or max_x < (WIN_TEXT_WIDTH + WIN_REGISTER_WIDTH)):
+                if not err_win_panel:
+                    err_win = curses.newwin(0, 0)
+                    err_win_panel = curses.panel.new_panel(err_win)
+                    err_win.box('!', '!')
+                    err_win.addstr(max_y // 2, max_x // 2 - 10, 'WINDOW TOO SMALL')
+                    err_win.noutrefresh()
+                continue
+
+            # resize each window
+            try:
+                memory_win.resize(lower_win_height, max_x,
+                                  max_y - lower_win_height, 0)
+                text_win.resize(max_y - lower_win_height, max_x - upper_win_width,
+                                0, 0)
+                register_win.resize(max_y - lower_win_height, upper_win_width,
+                                    0, max_x - upper_win_width)
+                refresh = True
+                err_win_panel = None
+            except Exception as e:
+                err('exception during resize:', e)
+                traceback.print_exception(e, file=sys.stderr)
+                if not err_win_panel:
+                    err_win = curses.newwin(0, 0)
+                    err_win_panel = curses.panel.new_panel(err_win)
+                    err_win.addstr(max_y // 2, max_x // 2, 'NCURSES ERROR')
+                    err_win.noutrefresh()
+
+        elif inp == ord('p'):
+            parse_mode = not parse_mode
+            err('parse_mode:', parse_mode)
 
         elif inp == ord('q'):
+            err('quit')
             return
 
-        if refresh:
-            update_text(cpu, text_win, program, labels)
-            update_memory(cpu, memory_win)
-            update_registers(cpu, register_win)
-            refresh = False
+        else:
+            err('unknown ch', inp)
 
 
 if __name__ == '__main__':
     wrapper(main)
+    print('Done.')
 
 # New features:
 # highlight differences step by step
@@ -554,6 +658,7 @@ if __name__ == '__main__':
 #
 # swaps may mean using nc.panel?
 # yes, classes for instructions / operators / operands
+# yes, we will need panel after all
 #
 # resizing: display error if screen is too small
 # switch layouts?
@@ -562,3 +667,9 @@ if __name__ == '__main__':
 #
 # bold window names
 # colored outputs
+#
+# registers right 1/3rd or 1/4th, with max and min; dont expand beyond max,
+# error if below min
+#
+# if impossible_to_show:
+#   while loop only handles q and [resize]
