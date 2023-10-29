@@ -11,22 +11,27 @@ from curses import wrapper
 
 WIN_REGISTER_WIDTH = 15
 WIN_TEXT_WIDTH = 35
-WIN_HEIGHT = 14
+WIN_HEIGHT = 13
+
+COLOR_NORMAL = 0
+COLOR_RED = 1
+COLOR_BLUE = 2
+COLOR_YELLOW = 3
 
 TEXT = 0x7f00
 STACK = 0x5500
 
-debug = True
+debug = False
 
 
-def err(*args):
+def dbg(*args):
     if debug:
         print(*args, file=sys.stderr)
 
 
 class Window:
     def __init__(self, title, nlines, ncols, begin_y, begin_x):
-        err(f'Window(.., {title}, {nlines}, {ncols}, {begin_y}, {begin_x}')
+        dbg(f'Window("{title}", {nlines}, {ncols}, {begin_y}, {begin_x})')
         self.title = title
 
         self.frame = curses.newwin(0, 0)
@@ -37,8 +42,9 @@ class Window:
 
         self.selected = None
         self.items = []
+        self.active = False
+        self.start = 0
 
-        # self.refresh()
         self.resize(nlines, ncols, begin_y, begin_x)
 
     def resize(self, n_lines, n_cols, start_y, start_x):
@@ -53,28 +59,55 @@ class Window:
         self.refresh()
 
     def refresh(self):
-        self.frame.box()
+        if self.active:
+            self.frame.attron(curses.color_pair(COLOR_RED))
+            self.frame.box()
+            self.frame.attrset(0)
+        else:
+            self.frame.box()
         self.frame.noutrefresh()
 
         self.w.erase()
         max_y, max_x = self.w.getmaxyx()
-        for n, item in enumerate(self.items):
-            if n >= max_y:
+
+        if self.selected is not None:
+            if self.selected >= (self.start + max_y - 1):
+                self.start += 1
+            elif self.selected <= self.start:
+                self.start -= 1
+
+        if self.start < 0:
+            self.start = 0
+
+        if self.selected is not None and self.selected < self.start:
+            self.start = self.selected
+
+        dbg('selected is', self.selected)
+        dbg('start is now', self.start, '\n')
+        n = 0
+        for item in self.items[self.start:]:
+            if n >= (max_y - 1):
                 break
-            self.w.addnstr(n, 0, item, max_x)
+            self.drawcolorline(n, 0, item)
+            n += 1
 
-        if self.selected is not None and self.selected < max_y:
-            self.w.chgat(self.selected, 0, -1, curses.A_REVERSE)
+        if self.selected is not None:
+            self.w.chgat(self.selected - self.start, 0, -1,
+                         curses.A_REVERSE | curses.A_BOLD)
 
-    def addstr(self, *args):
-        self.w.addstr(*args)
+    def drawcolorline(self, y, x, line):
+        self.w.move(y, x)
+        for color, split in line:
+            if color:
+                attr = curses.color_pair(color)
+            else:
+                attr = curses.A_NORMAL
+            self.w.addstr(split, attr)
 
-    def addnstr(self, *args):
-        self.w.addnstr(*args)
-
-    def setitems(self, items):
+    def setitems(self, items, refresh=True):
         self.items = items
-        self.refresh()
+        if refresh:
+            self.refresh()
 
     def select(self, sel):
         if sel > len(self.items) or sel < 0:
@@ -184,9 +217,9 @@ class CPU:
             val = self.registers[src]
         elif srctype == 'm':
             addr = self.registers[src]
-            val = self.memory[addr]
+            val = self.memory[addr] & 0xffff
         elif srctype == 'i':
-            val = src
+            val = src & 0xffff
         else:
             raise Exception('unknown src operand type')
 
@@ -218,9 +251,9 @@ class CPU:
             val = self.registers[src]
         elif srctype == 'm':
             addr = self.registers[src]
-            val = self.memory[addr]
+            val = self.memory[addr] & 0xffff
         elif srctype == 'i':
-            val = src
+            val = src & 0xffff
         else:
             raise Exception('unknown src operand type')
 
@@ -256,9 +289,9 @@ class CPU:
             val = self.registers[src]
         elif srctype == 'm':
             addr = self.registers[src]
-            val = self.memory[addr]
+            val = self.memory[addr] & 0xffff
         elif srctype == 'i':
-            val = src
+            val = src & 0xffff
         else:
             raise Exception('unknown src operand type')
 
@@ -285,24 +318,24 @@ class CPU:
             val = self.registers[src]
         elif srctype == 'm':
             addr = self.registers[src]
-            val = self.memory[addr]
+            val = self.memory[addr] & 0xffff
         elif srctype == 'i':
-            val = src
+            val = src & 0xffff
         else:
             raise Exception('unknown src operand type')
 
         if desttype == 'r':
-            self.registers[dest] = val & 0xffff  # lower 2 bytes
+            self.registers[dest] = val
         elif desttype == 'm':
             addr = self.registers[dest]
-            val = val & 0xffff
             self.memory[addr] = val & 0xff  # lower byte
             self.memory[addr+1] = val >> 0x8  # upper byte
         else:
             raise Exception('unknown dest operand type')
 
     def execute(self):
-        self.states.append(State(self.registers, self.flags, self.memory))
+        self.states.append(State(self.registers.copy(), self.flags.copy(),
+                                 self.memory.copy()))
 
         ip = self.ip
         self.states[-1].registers['ip'] += 1
@@ -364,7 +397,7 @@ def parse_program(program):
             continue
 
         if line.endswith(':'):
-            labels[line[:-1]] = n  # + TEXT
+            labels[line[:-1]] = n
         else:
             instructions.append(line)
             n += 1
@@ -422,67 +455,56 @@ def parse_operands(operands, labels=None):
     return operand_pairs
 
 
-def update_memory(cpu, memory_win):
-    memory_win.w.erase()
-    memory_win.addstr(0, 0, '>')
-    addr = cpu.sp
-    memory = []
-    for n in range(14):
-        data1 = cpu.memory[addr]
-        data2 = cpu.memory[addr+1]
-        memory.append(f'{addr:#06x}: {data1:#04x} {data2:#04x}')
-        addr += 2
-
-    memory_win.setitems(memory)
-
-
-def update_text(cpu, text_win, program, labels):
-    if not text_win.items:
-        formatted = []
-        for addr, i in enumerate(program):
-            formatted.append(f'{addr + TEXT:#06x}: {i}')
-        for label, addr in labels.items():
-            orig = formatted[addr]
-            formatted[addr] = f'{orig}  # {label}'
-        text_win.setitems(formatted)
-
-    text_win.select(cpu.ip - TEXT)
-    text_win.refresh()
-
-
-def update_registers(cpu, register_win):
-    registers = []
-    for n, reg in enumerate(cpu.registers):
-        registers.append(f'{reg}: {cpu.registers[reg]:#06x}')
-
-    for m, flag in enumerate(cpu.flags):
-        registers.append(f'{flag}: {cpu.flags[flag]}')
-
-    register_win.setitems(registers)
-
-
 class RegisterWindow(Window):
-    def refresh(self):
-        super().refresh()
+    def update(self, cpu):
+        registers = []
+        for n, reg in enumerate(cpu.registers):
+            registers.append([(COLOR_BLUE, f'{reg}'),
+                              (COLOR_NORMAL, f' {cpu.registers[reg]:#06x}')])
+
+        for m, flag in enumerate(cpu.flags):
+            registers.append([(COLOR_NORMAL, f'{flag}: {cpu.flags[flag]}')])
+
+        self.setitems(registers)
 
 
 class MemoryWindow(Window):
-    def refresh(self):
-        super().refresh()
+    def update(self, cpu):
+        addr = cpu.sp
+        memory = []
+        for n in range(14):
+            data1 = cpu.memory[addr]
+            data2 = cpu.memory[addr+1]
+            memory.append([(COLOR_BLUE, f'{addr:#06x}'),
+                           (COLOR_NORMAL, f' {data1:#04x} {data2:#04x}')])
+            addr += 2
+
+        self.setitems(memory)
 
 
 class TextWindow(Window):
-    def refresh(self):
-        super().refresh()
+    def update(self, cpu, program):
+        formatted = []
+        for addr, i in enumerate(program):
+            formatted.append([(COLOR_BLUE, f'{addr + TEXT:#06x}'),
+                              (COLOR_NORMAL, f' {i}')])
+        for label, addr in self.labels.items():
+            formatted[addr].extend([(COLOR_YELLOW, f' # {label}')])
+        self.setitems(formatted, False)
+        self.select(cpu.ip - TEXT)
+        self.refresh()
 
 
 def main(stdscr):
+    global debug
+
     err_win_panel = None
 
     stdscr.clear()
 
-    curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
-    curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
+    curses.init_pair(COLOR_RED, curses.COLOR_RED, curses.COLOR_BLACK)
+    curses.init_pair(COLOR_BLUE, curses.COLOR_BLUE, curses.COLOR_BLACK)
+    curses.init_pair(COLOR_YELLOW, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.curs_set(0)  # hide cursor
 
     minwidth = WIN_REGISTER_WIDTH + WIN_TEXT_WIDTH
@@ -496,8 +518,7 @@ def main(stdscr):
     lower_win_height = max(WIN_HEIGHT, max_y // 3)
 
     # Memory window: entire lower region
-    # So we can use auto-sizing and only need to determine start_y
-    memory_win = Window(
+    memory_win = MemoryWindow(
             'Stack',
             lower_win_height,
             curses.COLS,
@@ -507,7 +528,7 @@ def main(stdscr):
     upper_win_width = max(WIN_REGISTER_WIDTH, max_x // 3)
 
     # Text window: left 2/3rds of upper region.
-    text_win = Window(
+    text_win = TextWindow(
             'Text',
             curses.LINES - lower_win_height,
             curses.COLS - upper_win_width,
@@ -515,7 +536,7 @@ def main(stdscr):
             0)
 
     # Register window: right 1/3rd of upper region.
-    register_win = Window(
+    register_win = RegisterWindow(
             'Registers',
             curses.LINES - lower_win_height,
             curses.COLS - (curses.COLS - upper_win_width),
@@ -528,17 +549,23 @@ def main(stdscr):
 
     instructions, labels = parse_program(lines)
     program = parse_instructions(instructions, labels)
+    text_win.labels = labels
 
     cpu = CPU(program, labels['_start'])
 
     refresh = True
     parse_mode = False
+    windows = [text_win, memory_win]
+    selwin = 0
     while True:
         if refresh:
-            update_text(cpu, text_win, program if parse_mode else instructions,
-                        labels)
-            update_memory(cpu, memory_win)
-            update_registers(cpu, register_win)
+            windows[selwin].active = True
+            windows[selwin-1].active = False
+            debug = True
+            text_win.update(cpu, program if parse_mode else instructions)
+            debug = False
+            memory_win.update(cpu)
+            register_win.update(cpu)
             refresh = False
 
         curses.panel.update_panels()
@@ -546,17 +573,29 @@ def main(stdscr):
 
         inp = stdscr.getch()
         if inp == curses.KEY_UP or inp == ord('k'):
+            if windows[selwin] != text_win:
+                continue
             if err_win_panel is not None:
                 continue
             cpu.prev()
             refresh = True
 
         elif inp == curses.KEY_DOWN or inp == ord('j'):
+            if windows[selwin] != text_win:
+                continue
             if err_win_panel is not None:
                 continue
             if cpu.ip + 1 == len(cpu.instructions) + TEXT:
                 continue
             cpu.execute()
+            refresh = True
+
+        elif inp == ord('\t'):
+            # Cycle active window
+            if selwin:
+                selwin = 0
+            else:
+                selwin = 1
             refresh = True
 
         elif inp == curses.KEY_RESIZE:
@@ -566,7 +605,7 @@ def main(stdscr):
             max_y, max_x = stdscr.getmaxyx()
             lower_win_height = max(WIN_HEIGHT, max_y // 3)
             upper_win_width = max(WIN_REGISTER_WIDTH, max_x // 3)
-            err('stdscr is now', (max_y, max_x))
+            dbg('stdscr is now', (max_y, max_x))
 
             if (
                     max_y < (2 * WIN_HEIGHT)
@@ -575,22 +614,33 @@ def main(stdscr):
                     err_win = curses.newwin(0, 0)
                     err_win_panel = curses.panel.new_panel(err_win)
                     err_win.box('!', '!')
-                    err_win.addstr(max_y // 2, max_x // 2 - 10, 'WINDOW TOO SMALL')
+                    err_win.addstr(max_y // 2, max_x // 2 - 10,
+                                   'WINDOW TOO SMALL')
                     err_win.noutrefresh()
                 continue
 
             # resize each window
             try:
-                memory_win.resize(lower_win_height, max_x,
-                                  max_y - lower_win_height, 0)
-                text_win.resize(max_y - lower_win_height, max_x - upper_win_width,
-                                0, 0)
-                register_win.resize(max_y - lower_win_height, upper_win_width,
-                                    0, max_x - upper_win_width)
+                memory_win.resize(
+                        lower_win_height,
+                        max_x,
+                        max_y - lower_win_height,
+                        0)
+                text_win.resize(
+                        max_y - lower_win_height,
+                        max_x - upper_win_width,
+                        0,
+                        0)
+                register_win.resize(
+                        max_y - lower_win_height,
+                        upper_win_width,
+                        0,
+                        max_x - upper_win_width)
+
                 refresh = True
                 err_win_panel = None
             except Exception as e:
-                err('exception during resize:', e)
+                dbg('exception during resize:', e)
                 traceback.print_exception(e, file=sys.stderr)
                 if not err_win_panel:
                     err_win = curses.newwin(0, 0)
@@ -600,14 +650,16 @@ def main(stdscr):
 
         elif inp == ord('p'):
             parse_mode = not parse_mode
-            err('parse_mode:', parse_mode)
+            dbg('parse_mode:', parse_mode)
+            refresh = True
 
         elif inp == ord('q'):
-            err('quit')
+            dbg('quit')
             return
 
         else:
-            err('unknown ch', inp)
+            dbg('unknown ch', inp)
+            dbg('tab is', inp == 9)
 
 
 if __name__ == '__main__':
