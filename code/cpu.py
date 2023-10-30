@@ -18,8 +18,8 @@ COLOR_RED = 1
 COLOR_BLUE = 2
 COLOR_YELLOW = 3
 
-TEXT = 0x7f00
-STACK = 0x5500
+STACK = 0x7f00
+TEXT = 0x5500
 
 debug = False
 
@@ -53,12 +53,12 @@ class Window:
         self.frame.erase()
         self.frame.addstr(1, 2, self.title, curses.color_pair(1))
 
-        self.w.resize(n_lines - 5, n_cols - 4)
+        self.w.resize(n_lines - 6, n_cols - 4)
         self.w_panel.move(start_y + 4, start_x + 2)
 
         self.refresh()
 
-    def refresh(self):
+    def refresh(self, update_start=False):
         if self.active:
             self.frame.attron(curses.color_pair(COLOR_RED))
             self.frame.box()
@@ -70,30 +70,31 @@ class Window:
         self.w.erase()
         max_y, max_x = self.w.getmaxyx()
 
-        if self.selected is not None:
+        if update_start and self.selected is not None:
             if self.selected >= (self.start + max_y - 1):
-                self.start += 1
+                self.start = self.selected - max_y + 1
             elif self.selected <= self.start:
-                self.start -= 1
+                self.start = self.selected
 
         if self.start < 0:
             self.start = 0
 
-        if self.selected is not None and self.selected < self.start:
-            self.start = self.selected
-
-        dbg('selected is', self.selected)
-        dbg('start is now', self.start, '\n')
-        n = 0
-        for item in self.items[self.start:]:
-            if n >= (max_y - 1):
+        for n, item in enumerate(self.items[self.start:]):
+            if n >= max_y:
                 break
             self.drawcolorline(n, 0, item)
-            n += 1
 
-        if self.selected is not None:
-            self.w.chgat(self.selected - self.start, 0, -1,
-                         curses.A_REVERSE | curses.A_BOLD)
+        if self.selected is None:
+            return
+
+        if self.selected < self.start:
+            return
+
+        if self.selected >= self.start + max_y:
+            return
+
+        self.w.chgat(self.selected - self.start, 0, -1,
+                     curses.A_REVERSE | curses.A_BOLD)
 
     def drawcolorline(self, y, x, line):
         self.w.move(y, x)
@@ -111,7 +112,8 @@ class Window:
 
     def select(self, sel):
         if sel > len(self.items) or sel < 0:
-            raise Exception('index out of range')
+            return
+            # raise Exception('index out of range')
         self.selected = sel
 
 
@@ -483,7 +485,7 @@ class MemoryWindow(Window):
 
 
 class TextWindow(Window):
-    def update(self, cpu, program):
+    def update(self, cpu, program, follow=False):
         formatted = []
         for addr, i in enumerate(program):
             formatted.append([(COLOR_BLUE, f'{addr + TEXT:#06x}'),
@@ -492,7 +494,7 @@ class TextWindow(Window):
             formatted[addr].extend([(COLOR_YELLOW, f' # {label}')])
         self.setitems(formatted, False)
         self.select(cpu.ip - TEXT)
-        self.refresh()
+        self.refresh(follow)
 
 
 def main(stdscr):
@@ -557,13 +559,13 @@ def main(stdscr):
     parse_mode = False
     windows = [text_win, memory_win]
     selwin = 0
+    follow = True
     while True:
         if refresh:
             windows[selwin].active = True
             windows[selwin-1].active = False
-            debug = True
-            text_win.update(cpu, program if parse_mode else instructions)
-            debug = False
+
+            text_win.update(cpu, program if parse_mode else instructions, follow)
             memory_win.update(cpu)
             register_win.update(cpu)
             refresh = False
@@ -578,6 +580,7 @@ def main(stdscr):
             if err_win_panel is not None:
                 continue
             cpu.prev()
+            follow = True
             refresh = True
 
         elif inp == curses.KEY_DOWN or inp == ord('j'):
@@ -588,6 +591,21 @@ def main(stdscr):
             if cpu.ip + 1 == len(cpu.instructions) + TEXT:
                 continue
             cpu.execute()
+            follow = True
+            refresh = True
+
+        elif inp == ord('J'):
+            if err_win_panel is not None:
+                continue
+            windows[selwin].start += 1
+            follow = False
+            refresh = True
+
+        elif inp == ord('K'):
+            if err_win_panel is not None:
+                continue
+            windows[selwin].start -= 1
+            follow = False
             refresh = True
 
         elif inp == ord('\t'):
@@ -687,8 +705,8 @@ if __name__ == '__main__':
 #      indirect/pointer support
 #      strings / initialized data
 #      in/out instructions (necessitates I/O pane)
-#      fix box
 #      make program with real value
+#      state-independent scrolling and memory scrolling
 #
 # ---
 #
