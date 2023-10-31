@@ -59,6 +59,7 @@ class Window:
         self.refresh()
 
     def refresh(self, update_start=False):
+        dbg('refresh called', self)
         if self.active:
             self.frame.attron(curses.color_pair(COLOR_RED))
             self.frame.box()
@@ -70,15 +71,20 @@ class Window:
         self.w.erase()
         max_y, max_x = self.w.getmaxyx()
 
+        # TODO: don't allow scrolling past end of items
         if update_start and self.selected is not None:
-            if self.selected >= (self.start + max_y - 1):
-                self.start = self.selected - max_y + 1
+            if self.selected >= (self.start + max_y):
+                self.start = self.selected - max_y
             elif self.selected <= self.start:
                 self.start = self.selected
 
         if self.start < 0:
             self.start = 0
+        elif self.start >= len(self.items):
+            dbg('yep')
+            # self.start = len(self.items) - 1
 
+        # dbg('iter self.items starting at', self.start)
         for n, item in enumerate(self.items[self.start:]):
             if n >= max_y:
                 break
@@ -472,15 +478,21 @@ class RegisterWindow(Window):
 
 class MemoryWindow(Window):
     def update(self, cpu):
-        addr = cpu.sp
         memory = []
-        for n in range(14):
+        addr = self.start + TEXT
+
+        dbg('will draw', addr, 'through', addr+14)
+        dbg('memory is', cpu.memory)
+        for _ in range(14):
             data1 = cpu.memory[addr]
             data2 = cpu.memory[addr+1]
-            memory.append([(COLOR_BLUE, f'{addr:#06x}'),
+            memory.append([(COLOR_BLUE, f'{addr + TEXT:#06x}'),
                            (COLOR_NORMAL, f' {data1:#04x} {data2:#04x}')])
+            if addr == cpu.sp:
+                memory[-1].append((COLOR_NORMAL, '  <-'))
             addr += 2
 
+        dbg('update: setting items to:', memory)
         self.setitems(memory)
 
 
@@ -565,8 +577,11 @@ def main(stdscr):
             windows[selwin].active = True
             windows[selwin-1].active = False
 
-            text_win.update(cpu, program if parse_mode else instructions, follow)
+            text_win.update(cpu, program if parse_mode else instructions,
+                            follow)
+            debug = True
             memory_win.update(cpu)
+            debug = False
             register_win.update(cpu)
             refresh = False
 
@@ -597,12 +612,16 @@ def main(stdscr):
         elif inp == ord('J'):
             if err_win_panel is not None:
                 continue
+            if windows[selwin].start >= len(windows[selwin].items):
+                continue
             windows[selwin].start += 1
             follow = False
             refresh = True
 
         elif inp == ord('K'):
             if err_win_panel is not None:
+                continue
+            if windows[selwin].start <= 0:
                 continue
             windows[selwin].start -= 1
             follow = False
