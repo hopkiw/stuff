@@ -74,7 +74,7 @@ class Window:
         # TODO: don't allow scrolling past end of items
         if update_start and self.selected is not None:
             if self.selected >= (self.start + max_y):
-                self.start = self.selected - max_y
+                self.start = self.selected - max_y + 1
             elif self.selected <= self.start:
                 self.start = self.selected
 
@@ -82,21 +82,24 @@ class Window:
             self.start = 0
         elif self.start >= len(self.items):
             dbg('yep')
-            # self.start = len(self.items) - 1
+            self.start = len(self.items) - 1
 
-        # dbg('iter self.items starting at', self.start)
+        dbg('iter self.items starting at', self.start)
         for n, item in enumerate(self.items[self.start:]):
             if n >= max_y:
                 break
             self.drawcolorline(n, 0, item)
 
         if self.selected is None:
+            dbg('no highlight')
             return
 
         if self.selected < self.start:
+            dbg('highlight is above viewport')
             return
 
-        if self.selected >= self.start + max_y:
+        if self.selected >= (self.start + max_y):
+            dbg('highlight is below viewport')
             return
 
         self.w.chgat(self.selected - self.start, 0, -1,
@@ -336,6 +339,10 @@ class CPU:
             self.registers[dest] = val
         elif desttype == 'm':
             addr = self.registers[dest]
+            if addr & 0xff00 != STACK:
+                dbg('memory:', self.memory)
+                dbg('registers:', self.registers)
+                raise Exception(f'runtime error: invalid memory address {addr:#06x}')
             self.memory[addr] = val & 0xff  # lower byte
             self.memory[addr+1] = val >> 0x8  # upper byte
         else:
@@ -478,21 +485,33 @@ class RegisterWindow(Window):
 
 class MemoryWindow(Window):
     def update(self, cpu):
+        cpu_memory = cpu.memory.copy()
+        filled = cpu_memory.keys()
+        if filled:
+            first = min(filled)
+            last = max(filled)
+        else:
+            first = cpu.sp - 14
+            last = cpu.sp + 10
         memory = []
-        addr = self.start + TEXT
+        # addr = cpu.sp
 
-        dbg('will draw', addr, 'through', addr+14)
+        dbg('will draw', hex(first - 14), 'through', hex(last + 14))
         dbg('memory is', cpu.memory)
-        for _ in range(14):
-            data1 = cpu.memory[addr]
-            data2 = cpu.memory[addr+1]
-            memory.append([(COLOR_BLUE, f'{addr + TEXT:#06x}'),
-                           (COLOR_NORMAL, f' {data1:#04x} {data2:#04x}')])
+        for addr in range(first - 14, last + 14, 2):
+            data1 = cpu_memory[addr]
+            data2 = cpu_memory[addr+1]
+            if data1 or data2:
+                dbg('real data', data1, data2)
+            line = [(COLOR_BLUE, f'{addr:#06x}'),
+                    (COLOR_NORMAL, f' {data1:#04x} {data2:#04x}')]
             if addr == cpu.sp:
-                memory[-1].append((COLOR_NORMAL, '  <-'))
-            addr += 2
+                line.append((COLOR_NORMAL, '  <-'))
 
-        dbg('update: setting items to:', memory)
+            memory.append(line)
+            # addr += 2
+
+        dbg('update: setting items to:', len(memory))
         self.setitems(memory)
 
 
@@ -566,6 +585,8 @@ def main(stdscr):
     text_win.labels = labels
 
     cpu = CPU(program, labels['_start'])
+    # memory_win.start = cpu.sp - STACK
+    memory_win.start = 7
 
     refresh = True
     parse_mode = False
