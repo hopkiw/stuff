@@ -20,6 +20,7 @@ COLOR_YELLOW = 3
 
 STACK = 0x7f00
 TEXT = 0x5500
+DATA = 0x6b00
 
 debug = True
 
@@ -59,7 +60,6 @@ class Window:
         self.refresh()
 
     def refresh(self, update_start=False):
-        dbg('refresh called', self)
         if self.active:
             self.frame.attron(curses.color_pair(COLOR_RED))
             self.frame.box()
@@ -81,25 +81,22 @@ class Window:
         if self.start < 0:
             self.start = 0
         elif self.start >= len(self.items):
-            dbg('yep')
             self.start = len(self.items) - 1
 
-        dbg('iter self.items starting at', self.start)
         for n, item in enumerate(self.items[self.start:]):
             if n >= max_y:
                 break
             self.drawcolorline(n, 0, item)
 
         if self.selected is None:
-            dbg('no highlight')
             return
 
         if self.selected < self.start:
-            dbg('highlight is above viewport')
+            dbg('highlight is above viewport for', self)
             return
 
         if self.selected >= (self.start + max_y):
-            dbg('highlight is below viewport')
+            dbg('highlight is below viewport for', self)
             return
 
         self.w.chgat(self.selected - self.start, 0, -1,
@@ -145,14 +142,21 @@ class State:
 class CPU:
     _registers = ['ax', 'bx', 'cx', 'dx', 'si', 'di', 'ip', 'bp', 'sp']
 
-    def __init__(self, program, offset=0):
+    def __init__(self, program, offset=0, data=None):
         self.instructions = program
         self.states = [State()]
         self.states[-1].registers['sp'] = STACK
-        self.states[-1].registers['bp'] = STACK
+        self.states[-1].registers['bp'] = 0x1
 
         self._fix_offsets()
         self.states[-1].registers['ip'] = offset + TEXT
+
+        self._load(data)
+
+    def _load(self, data):
+        dbg('got data', data)
+        for addr in data:
+            self.memory[addr + DATA] = data[addr]
 
     def _fix_offsets(self):
         for i in range(len(self.instructions)):
@@ -160,8 +164,11 @@ class CPU:
             new_operands = []
             for operand in operands:
                 operand, optype = operand
-                if optype == 'l':
+                if optype == 'tl':
                     operand = operand + TEXT
+                    optype = 'i'
+                elif optype == 'dl':
+                    operand = operand + DATA
                     optype = 'i'
                 new_operands.append((operand, optype))
             self.instructions[i] = (op, new_operands)
@@ -233,7 +240,7 @@ class CPU:
         elif srctype == 'i':
             val = src & 0xffff
         else:
-            raise Exception('unknown src operand type')
+            raise Exception('unknown src operand type %s' % srctype)
 
         if desttype == 'r':
             res = self.registers[dest] - val
@@ -346,7 +353,7 @@ class CPU:
         elif srctype == 'i':
             val = src & 0xffff
         else:
-            raise Exception('unknown src operand type')
+            raise Exception('unknown src operand type %s' % srctype)
 
         if desttype == 'r':
             self.registers[dest] = val
@@ -366,7 +373,11 @@ class CPU:
 
         ip = self.ip
         self.states[-1].registers['ip'] += 1
-        op, operands = self.instructions[ip - TEXT]
+        try:
+            op, operands = self.instructions[ip - TEXT]
+        except Exception:
+            dbg('ip is', hex(ip))
+            raise
         # TODO: membership list vs elif chain
         if op == 'mov':
             self.op_mov(operands)
@@ -415,8 +426,10 @@ class CPU:
 
 
 def parse_program(program):
-    instructions = []
-    labels = {}
+    labels = {'text': {}, 'data': {}}
+    sections = {'text': [], 'data': []}
+    section = 'text'
+
     n = 0
     for line in program:
         line = line.split(';')[0].strip()
@@ -424,46 +437,74 @@ def parse_program(program):
             continue
 
         if line.endswith(':'):
-            labels[line[:-1]] = n
+            dbg('adding a label', line, section, n)
+            labels[section][line[:-1]] = n
+        elif line.startswith('.section'):
+            section = line.split()[1]
+            n = 0
         else:
-            instructions.append(line)
+            sections[section].append(line)
             n += 1
 
-    if '_start' not in labels:
-        labels['_start'] = TEXT
+    if '_start' not in labels['text']:
+        labels['text']['_start'] = TEXT
 
-    return instructions, labels
+    dbg('_start is', hex(labels['text']['_start']))
+
+    return sections, labels
 
 
-def parse_instructions(instructions, labels):
-    new_instructions = []
-    for n, instruction in enumerate(instructions):
+def parse_text(text, labels):
+    instructions = []
+    for n, instruction in enumerate(text):
         instruction = instruction.split(maxsplit=1)
         if len(instruction) < 2:
             instruction = instruction[0]
             if instruction not in ['nop', 'ret']:
                 raise Exception('invalid instruction: %s requires operands'
                                 % instruction)
-            new_instructions.append((instruction, tuple()))
+            instructions.append((instruction, tuple()))
         else:
             op, operands = instruction
-            operands = parse_operands(operands, labels)
-            new_instructions.append((op, operands))
+            operands = parse_operands(operands, labels['text'], labels['data'])
+            instructions.append((op, operands))
 
-    return new_instructions
+    return instructions
 
 
-def parse_operands(operands, labels=None):
-    if not labels:
-        labels = tuple()
+def parse_data(data):
+    dbg('parsing data:', data)
+    new_data = defaultdict(int)
+    for n, instruction in enumerate(data.copy()):
+        op, operands = instruction.split(maxsplit=1)
+        if op == '.string':
+            if not (operands.startswith('"') and operands.endswith('"')):
+                raise Exception('invalid string value "%s"' % instruction)
+            operands = operands[1:-1]
+            for i, char in enumerate(operands):
+                new_data[n+i] = ord(char)
+        else:
+            raise Exception('invalid instruction "%s"' % instruction)
+
+    return new_data
+
+
+def parse_operands(operands, text_labels=None, data_labels=None):
+    if not text_labels:
+        text_labels = tuple()
+    if not data_labels:
+        data_labels = tuple()
 
     operand_pairs = []
     for op in operands.split(','):
         optype = None
         op = op.strip()
-        if op in labels:
-            val = labels[op]
-            optype = 'l'
+        if op in text_labels:
+            val = text_labels[op]
+            optype = 'tl'
+        elif op in data_labels:
+            val = data_labels[op]
+            optype = 'dl'
         elif len(op) == 2 and op.isalpha() and op in CPU._registers:
             val = op
             optype = 'r'
@@ -507,32 +548,24 @@ class RegisterWindow(Window):
 class MemoryWindow(Window):
     def update(self, cpu):
         cpu_memory = cpu.memory.copy()
+        cpu_memory[cpu.sp]
         filled = cpu_memory.keys()
-        if filled:
-            first = min(filled)
-            last = max(filled)
-        else:
-            first = cpu.sp - 14
-            last = cpu.sp + 10
-        memory = []
-        # addr = cpu.sp
+        first = min(filled)
+        last = max(filled)
 
-        dbg('will draw', hex(first - 14), 'through', hex(last + 14))
-        dbg('memory is', cpu.memory)
-        for addr in range(first - 14, last + 14, 2):
-            data1 = cpu_memory[addr]
-            data2 = cpu_memory[addr+1]
-            if data1 or data2:
-                dbg('real data', data1, data2)
+        memory = []
+        for addr in range(first - 14, last + 14, 4):
+            dataline = ''
+            for i in range(4):
+                data = cpu_memory[addr+i]
+                dataline = f'{dataline} {data:#04x}'
             line = [(COLOR_BLUE, f'{addr:#06x}'),
-                    (COLOR_NORMAL, f' {data1:#04x} {data2:#04x}')]
-            if addr == cpu.sp:
+                    (COLOR_NORMAL, dataline)]
+            if addr == cpu.sp or addr + 2 == cpu.sp:
                 line.append((COLOR_NORMAL, '  <-'))
 
             memory.append(line)
-            # addr += 2
 
-        dbg('update: setting items to:', len(memory))
         self.setitems(memory)
 
 
@@ -571,6 +604,17 @@ def main(stdscr):
     max_y, max_x = stdscr.getmaxyx()
     lower_win_height = max(WIN_HEIGHT, max_y // 3)
 
+    fn = sys.argv[1] if len(sys.argv) > 1 else 'asm.txt'
+    with open(fn, 'r') as fh:
+        lines = fh.read().splitlines()
+
+    # TODO: desperate need of renaming
+    sections, labels = parse_program(lines)
+    program = parse_text(sections['text'], labels)
+    data = parse_data(sections['data'])
+
+    cpu = CPU(program, labels['text']['_start'], data)
+
     # Memory window: entire lower region
     memory_win = MemoryWindow(
             'Stack',
@@ -578,6 +622,16 @@ def main(stdscr):
             curses.COLS,
             curses.LINES - lower_win_height,
             0)
+
+    # memory_win.start = cpu.sp - STACK
+    memory_win.start = 7
+
+#    data_win = MemoryWindow(
+#            'Data',
+#            lower_win_height,
+#            curses.COLS // 2,
+#            curses.LINES - lower_win_height,
+#            curses.COLS // 2)
 
     upper_win_width = max(WIN_REGISTER_WIDTH, max_x // 3)
 
@@ -589,6 +643,8 @@ def main(stdscr):
             0,
             0)
 
+    text_win.labels = labels['text']
+
     # Register window: right 1/3rd of upper region.
     register_win = RegisterWindow(
             'Registers',
@@ -597,17 +653,7 @@ def main(stdscr):
             0,
             curses.COLS - upper_win_width)
 
-    fn = sys.argv[1] if len(sys.argv) > 1 else 'asm.txt'
-    with open(fn, 'r') as fh:
-        lines = fh.read().splitlines()
-
-    instructions, labels = parse_program(lines)
-    program = parse_instructions(instructions, labels)
-    text_win.labels = labels
-
-    cpu = CPU(program, labels['_start'])
-    # memory_win.start = cpu.sp - STACK
-    memory_win.start = 7
+    # data_win.update(cpu, data)
 
     refresh = True
     parse_mode = False
@@ -619,7 +665,7 @@ def main(stdscr):
             windows[selwin].active = True
             windows[selwin-1].active = False
 
-            text_win.update(cpu, program if parse_mode else instructions,
+            text_win.update(cpu, program if parse_mode else sections['text'],
                             follow)
             debug = True
             memory_win.update(cpu)
@@ -657,6 +703,8 @@ def main(stdscr):
             if windows[selwin].start >= len(windows[selwin].items):
                 continue
             windows[selwin].start += 1
+            dbg(windows[selwin], windows[selwin].start,
+                len(windows[selwin].items))
             follow = False
             refresh = True
 
@@ -666,7 +714,19 @@ def main(stdscr):
             if windows[selwin].start <= 0:
                 continue
             windows[selwin].start -= 1
+            dbg(windows[selwin], windows[selwin].start,
+                len(windows[selwin].items))
             follow = False
+            refresh = True
+
+        elif inp == ord('0'):
+            windows[selwin].start = 0
+            refresh = True
+
+        elif inp == ord('1'):
+            windows[selwin].start = len(windows[selwin].items) - 1
+            dbg(windows[selwin], windows[selwin].start,
+                len(windows[selwin].items))
             refresh = True
 
         elif inp == ord('\t'):
@@ -735,10 +795,6 @@ def main(stdscr):
         elif inp == ord('q'):
             dbg('quit')
             return
-
-        else:
-            dbg('unknown ch', inp)
-            dbg('tab is', inp == 9)
 
 
 if __name__ == '__main__':

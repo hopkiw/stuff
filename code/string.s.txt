@@ -1,0 +1,17 @@
+  .section text
+strlen:
+  push   bp
+  mov    bp,sp
+  sub    sp,0xc
+  add    sp,0xc
+  pop    bp
+  ret
+_start:
+  push   mystring
+  call   strlen
+  push   ax
+  nop
+  nop
+  .section data
+mystring:
+  .string "Hello, world!"
