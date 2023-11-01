@@ -21,7 +21,7 @@ COLOR_YELLOW = 3
 STACK = 0x7f00
 TEXT = 0x5500
 
-debug = False
+debug = True
 
 
 def dbg(*args):
@@ -183,6 +183,7 @@ class CPU:
     def op_push(self, operand):
         self.op_sub(parse_operands('sp,0x02'))
         stack = parse_operands('[sp]')
+        dbg('mov', operand[0], 'to', stack[0])
         self.op_mov((stack[0], operand[0]))
 
     def op_pop(self, operand):
@@ -195,13 +196,13 @@ class CPU:
         if desttype == 'r':
             dest = self.registers[dest]
         elif desttype == 'm':
-            addr = self.registers[dest]
+            addr = self._memory_operand(dest)
             dest1 = self.memory[addr]
             dest2 = self.memory[addr+1]
             dest = (dest2 << 8) + dest1
 
         if dest & 0xff00 != TEXT:
-            raise Exception('invalid jmp target')
+            raise Exception('invalid jmp target %x' % dest)
 
         self.states[-1].registers['ip'] = dest
 
@@ -227,7 +228,7 @@ class CPU:
         if srctype == 'r':
             val = self.registers[src]
         elif srctype == 'm':
-            addr = self.registers[src]
+            addr = self._memory_operand(src)
             val = self.memory[addr] & 0xffff
         elif srctype == 'i':
             val = src & 0xffff
@@ -237,7 +238,7 @@ class CPU:
         if desttype == 'r':
             res = self.registers[dest] - val
         elif desttype == 'm':
-            addr = self.registers[dest]
+            addr = self._memory_operand(dest)
             res = self.memory[addr] - val
         else:
             raise Exception('unknown dest operand type')
@@ -246,6 +247,18 @@ class CPU:
             self.states[-1].flags['zf'] = 1
         else:
             self.states[-1].flags['zf'] = 0
+
+    def _memory_operand(self, op):
+        addr = self.registers[op[:2]]
+        if op[2:]:
+            o, num = op[2], op[3:]
+            num = int(num, 16)
+            if o == '+':
+                addr = addr + num
+            elif o == '-':
+                addr = addr - num
+
+        return addr
 
     def op_sub(self, operands):
         dest, src = operands
@@ -261,7 +274,7 @@ class CPU:
         if srctype == 'r':
             val = self.registers[src]
         elif srctype == 'm':
-            addr = self.registers[src]
+            addr = self._memory_operand(src)
             val = self.memory[addr] & 0xffff
         elif srctype == 'i':
             val = src & 0xffff
@@ -272,7 +285,7 @@ class CPU:
             newval = self.registers[dest] - val
             self.registers[dest] = newval
         elif desttype == 'm':
-            addr = self.registers[dest]
+            addr = self._memory_operand(dest)
             if addr & 0xff000000 != STACK:
                 raise Exception('memory access out of bounds')
             newval = self.memory[addr] - val
@@ -299,7 +312,7 @@ class CPU:
         if srctype == 'r':
             val = self.registers[src]
         elif srctype == 'm':
-            addr = self.registers[src]
+            addr = self._memory_operand(src)
             val = self.memory[addr] & 0xffff
         elif srctype == 'i':
             val = src & 0xffff
@@ -309,7 +322,7 @@ class CPU:
         if desttype == 'r':
             self.registers[dest] += val
         elif desttype == 'm':
-            addr = self.registers[dest]
+            addr = self._memory_operand(dest)
             self.memory[addr] += val
         else:
             raise Exception('unknown dest operand type')
@@ -328,7 +341,7 @@ class CPU:
         if srctype == 'r':
             val = self.registers[src]
         elif srctype == 'm':
-            addr = self.registers[src]
+            addr = self._memory_operand(src)
             val = self.memory[addr] & 0xffff
         elif srctype == 'i':
             val = src & 0xffff
@@ -338,11 +351,10 @@ class CPU:
         if desttype == 'r':
             self.registers[dest] = val
         elif desttype == 'm':
-            addr = self.registers[dest]
-            if addr & 0xff00 != STACK:
-                dbg('memory:', self.memory)
-                dbg('registers:', self.registers)
-                raise Exception(f'runtime error: invalid memory address {addr:#06x}')
+            addr = self._memory_operand(dest)
+            if addr & 0xf000 != 0x7000:
+                raise Exception(
+                        f'runtime error: invalid memory address {addr:#06x}')
             self.memory[addr] = val & 0xff  # lower byte
             self.memory[addr+1] = val >> 0x8  # upper byte
         else:
@@ -455,8 +467,17 @@ def parse_operands(operands, labels=None):
         elif len(op) == 2 and op.isalpha() and op in CPU._registers:
             val = op
             optype = 'r'
-        elif len(op) == 4 and op[0] == '[' and op[-1] == ']':
+        elif op[0] == '[' and op[-1] == ']':
             val = op[1:-1]
+            # do some validations
+            if len(val) > 2:
+                aop, num = val[2], val[3:]
+                if aop not in ('+', '-'):
+                    raise Exception('invalid operand addressing "%s"' % op)
+                try:
+                    int(num, 16)
+                except ValueError:
+                    raise Exception('invalid operand addressing "%s"' % op)
             optype = 'm'
         else:
             try:
@@ -602,7 +623,7 @@ def main(stdscr):
                             follow)
             debug = True
             memory_win.update(cpu)
-            debug = False
+            # debug = False
             register_win.update(cpu)
             refresh = False
 
@@ -721,7 +742,12 @@ def main(stdscr):
 
 
 if __name__ == '__main__':
-    wrapper(main)
+    try:
+        wrapper(main)
+    except Exception as e:
+        print(e)
+        raise e
+
     print('Done.')
 
 # New features:
