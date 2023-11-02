@@ -22,7 +22,7 @@ STACK = 0x7f00
 TEXT = 0x5500
 DATA = 0x6b00
 
-debug = True
+debug = False
 
 
 def dbg(*args):
@@ -190,7 +190,6 @@ class CPU:
     def op_push(self, operand):
         self.op_sub(parse_operands('sp,0x02'))
         stack = parse_operands('[sp]')
-        dbg('mov', operand[0], 'to', stack[0])
         self.op_mov((stack[0], operand[0]))
 
     def op_pop(self, operand):
@@ -257,6 +256,7 @@ class CPU:
 
     def _memory_operand(self, op):
         addr = self.registers[op[:2]]
+        dbg('got addr before math', hex(addr))
         if op[2:]:
             o, num = op[2], op[3:]
             num = int(num, 16)
@@ -264,6 +264,7 @@ class CPU:
                 addr = addr + num
             elif o == '-':
                 addr = addr - num
+            dbg('special', o, num, 'result:', hex(addr))
 
         return addr
 
@@ -334,8 +335,39 @@ class CPU:
         else:
             raise Exception('unknown dest operand type')
 
+    def op_mul(self, operands):
+        dest, src = operands
+
+        dest, desttype = dest
+        src, srctype = src
+
+        if srctype == 'm' and desttype == 'm':
+            raise Exception('invalid source,dest pair (%s)' % (operands))
+        if desttype != 'r':
+            raise Exception('invalid dest operand')
+
+        if srctype == 'r':
+            val = self.registers[src]
+        elif srctype == 'm':
+            addr = self._memory_operand(src)
+            val = self.memory[addr] & 0xffff
+        elif srctype == 'i':
+            val = src & 0xffff
+        else:
+            raise Exception('unknown src operand type')
+
+        if desttype == 'r':
+            self.registers[dest] = (val * self.registers[dest]) & 0xffff
+        elif desttype == 'm':
+            addr = self._memory_operand(dest)
+            self.memory[addr] = (val * self.memory[addr]) & 0xffff
+        else:
+            raise Exception('unknown dest operand type')
+
     def op_mov(self, operands):
         dest, src = operands
+        dbg('mov', src, 'to', dest)
+        dbg('self.memory is', self.memory)
 
         dest, desttype = dest
         src, srctype = src
@@ -349,7 +381,9 @@ class CPU:
             val = self.registers[src]
         elif srctype == 'm':
             addr = self._memory_operand(src)
-            val = self.memory[addr] & 0xffff
+            dbg('got src addr', hex(addr))
+            val = self.memory[addr] & 0xff
+            val |= self.memory[addr+1] << 0x8
         elif srctype == 'i':
             val = src & 0xffff
         else:
@@ -359,6 +393,7 @@ class CPU:
             self.registers[dest] = val
         elif desttype == 'm':
             addr = self._memory_operand(dest)
+            dbg('got dest addr', hex(addr))
             if addr & 0xf000 != 0x7000:
                 raise Exception(
                         f'runtime error: invalid memory address {addr:#06x}')
@@ -381,6 +416,8 @@ class CPU:
         # TODO: membership list vs elif chain
         if op == 'mov':
             self.op_mov(operands)
+        elif op == 'mul':
+            self.op_mul(operands)
         elif op == 'add':
             self.op_add(operands)
         elif op == 'sub':
@@ -550,11 +587,11 @@ class MemoryWindow(Window):
         cpu_memory = cpu.memory.copy()
         cpu_memory[cpu.sp]
         filled = cpu_memory.keys()
-        first = min(filled)
+        first = min(filled) & 0xff00
         last = max(filled)
 
         memory = []
-        for addr in range(first - 14, last + 14, 4):
+        for addr in range(first, last, 4):
             dataline = ''
             for i in range(4):
                 data = cpu_memory[addr+i]
@@ -624,7 +661,7 @@ def main(stdscr):
             0)
 
     # memory_win.start = cpu.sp - STACK
-    memory_win.start = 7
+    # memory_win.start = 7
 
 #    data_win = MemoryWindow(
 #            'Data',
@@ -865,3 +902,5 @@ if __name__ == '__main__':
 #
 # if impossible_to_show:
 #   while loop only handles q and [resize]
+#
+# centralize memory reading/writing in word size operations
