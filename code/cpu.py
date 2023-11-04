@@ -22,7 +22,7 @@ STACK = 0x7f00
 TEXT = 0x5500
 DATA = 0x6b00
 
-debug = False
+debug = True
 
 
 def dbg(*args):
@@ -143,6 +143,7 @@ class CPU:
     _registers = ['ax', 'bx', 'cx', 'dx', 'si', 'di', 'ip', 'bp', 'sp']
 
     def __init__(self, program, offset=0, data=None):
+        dbg('cpu init offset', offset)
         self.instructions = program
         self.states = [State()]
         self.states[-1].registers['sp'] = STACK
@@ -484,7 +485,7 @@ def parse_program(program):
             n += 1
 
     if '_start' not in labels['text']:
-        labels['text']['_start'] = TEXT
+        labels['text']['_start'] = 0
 
     dbg('_start is', hex(labels['text']['_start']))
 
@@ -613,6 +614,7 @@ class TextWindow(Window):
             formatted.append([(COLOR_BLUE, f'{addr + TEXT:#06x}'),
                               (COLOR_NORMAL, f' {i}')])
         for label, addr in self.labels.items():
+            dbg('write label', label, 'at addr', hex(addr))
             formatted[addr].extend([(COLOR_YELLOW, f' # {label}')])
         self.setitems(formatted, False)
         self.select(cpu.ip - TEXT)
