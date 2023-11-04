@@ -80,7 +80,8 @@ class Window:
 
         if self.start < 0:
             self.start = 0
-        elif self.start >= len(self.items):
+        elif self.start > len(self.items):
+            dbg(self, 'self.start:', self.start, 'is ge', len(self.items))
             self.start = len(self.items) - 1
 
         for n, item in enumerate(self.items[self.start:]):
@@ -143,7 +144,6 @@ class CPU:
     _registers = ['ax', 'bx', 'cx', 'dx', 'si', 'di', 'ip', 'bp', 'sp']
 
     def __init__(self, program, offset=0, data=None):
-        dbg('cpu init offset', offset)
         self.instructions = program
         self.states = [State()]
         self.states[-1].registers['sp'] = STACK
@@ -153,9 +153,9 @@ class CPU:
         self.states[-1].registers['ip'] = offset + TEXT
 
         self._load(data)
+        self.data = data  # to detect if data is present
 
     def _load(self, data):
-        dbg('got data', data)
         for addr in data:
             self.memory[addr + DATA] = data[addr]
 
@@ -257,7 +257,6 @@ class CPU:
 
     def _memory_operand(self, op):
         addr = self.registers[op[:2]]
-        dbg('got addr before math', hex(addr))
         if op[2:]:
             o, num = op[2], op[3:]
             num = int(num, 16)
@@ -265,7 +264,6 @@ class CPU:
                 addr = addr + num
             elif o == '-':
                 addr = addr - num
-            dbg('special', o, num, 'result:', hex(addr))
 
         return addr
 
@@ -367,8 +365,6 @@ class CPU:
 
     def op_mov(self, operands):
         dest, src = operands
-        dbg('mov', src, 'to', dest)
-        dbg('self.memory is', self.memory)
 
         dest, desttype = dest
         src, srctype = src
@@ -382,7 +378,6 @@ class CPU:
             val = self.registers[src]
         elif srctype == 'm':
             addr = self._memory_operand(src)
-            dbg('got src addr', hex(addr))
             val = self.memory[addr] & 0xff
             val |= self.memory[addr+1] << 0x8
         elif srctype == 'i':
@@ -394,7 +389,6 @@ class CPU:
             self.registers[dest] = val
         elif desttype == 'm':
             addr = self._memory_operand(dest)
-            dbg('got dest addr', hex(addr))
             if addr & 0xf000 != 0x7000:
                 raise Exception(
                         f'runtime error: invalid memory address {addr:#06x}')
@@ -475,7 +469,6 @@ def parse_program(program):
             continue
 
         if line.endswith(':'):
-            dbg('adding a label', line, section, n)
             labels[section][line[:-1]] = n
         elif line.startswith('.section'):
             section = line.split()[1]
@@ -486,8 +479,6 @@ def parse_program(program):
 
     if '_start' not in labels['text']:
         labels['text']['_start'] = 0
-
-    dbg('_start is', hex(labels['text']['_start']))
 
     return sections, labels
 
@@ -511,7 +502,6 @@ def parse_text(text, labels):
 
 
 def parse_data(data):
-    dbg('parsing data:', data)
     new_data = defaultdict(int)
     for n, instruction in enumerate(data.copy()):
         op, operands = instruction.split(maxsplit=1)
@@ -586,13 +576,15 @@ class RegisterWindow(Window):
 class MemoryWindow(Window):
     def update(self, cpu):
         cpu_memory = cpu.memory.copy()
-        cpu_memory[cpu.sp]
-        filled = cpu_memory.keys()
-        first = min(filled) & 0xff00
-        last = max(filled)
+        dbg('cpu_memory:', cpu_memory)
+
+        start = DATA if cpu.data else STACK - 0x100
+        end = STACK+0x100
 
         memory = []
-        for addr in range(first, last, 4):
+        dbg('generate memory from', hex(start), hex(end), ',', end - start,
+            'lines')
+        for n, addr in enumerate(range(start, end, 4)):
             dataline = ''
             for i in range(4):
                 data = cpu_memory[addr+i]
@@ -600,10 +592,15 @@ class MemoryWindow(Window):
             line = [(COLOR_BLUE, f'{addr:#06x}'),
                     (COLOR_NORMAL, dataline)]
             if addr == cpu.sp or addr + 2 == cpu.sp:
+                dbg('found cpu.sp at add', addr)
                 line.append((COLOR_NORMAL, '  <-'))
+                if self.start is None:
+                    dbg('setting self.start to', i)
+                    self.start = n
 
             memory.append(line)
 
+        dbg('start is', self.start)
         self.setitems(memory)
 
 
@@ -614,7 +611,6 @@ class TextWindow(Window):
             formatted.append([(COLOR_BLUE, f'{addr + TEXT:#06x}'),
                               (COLOR_NORMAL, f' {i}')])
         for label, addr in self.labels.items():
-            dbg('write label', label, 'at addr', hex(addr))
             formatted[addr].extend([(COLOR_YELLOW, f' # {label}')])
         self.setitems(formatted, False)
         self.select(cpu.ip - TEXT)
@@ -661,16 +657,7 @@ def main(stdscr):
             curses.COLS,
             curses.LINES - lower_win_height,
             0)
-
-    # memory_win.start = cpu.sp - STACK
-    # memory_win.start = 7
-
-#    data_win = MemoryWindow(
-#            'Data',
-#            lower_win_height,
-#            curses.COLS // 2,
-#            curses.LINES - lower_win_height,
-#            curses.COLS // 2)
+    memory_win.start = None
 
     upper_win_width = max(WIN_REGISTER_WIDTH, max_x // 3)
 
@@ -701,6 +688,7 @@ def main(stdscr):
     follow = True
     while True:
         if refresh:
+            dbg('refresh was true')
             windows[selwin].active = True
             windows[selwin-1].active = False
 
@@ -906,3 +894,6 @@ if __name__ == '__main__':
 #   while loop only handles q and [resize]
 #
 # centralize memory reading/writing in word size operations
+#
+# unlabeled static data regions
+# i.e. https://flint.cs.yale.edu/cs421/papers/x86-asm/asm.html
