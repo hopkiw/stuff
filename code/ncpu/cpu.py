@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 
 from collections import defaultdict
+from collections.abc import MutableMapping
+from enum import Enum
 
-
-WIN_REGISTER_WIDTH = 15
-WIN_TEXT_WIDTH = 35
-WIN_HEIGHT = 13
-
-COLOR_NORMAL = 0
-COLOR_RED = 1
-COLOR_BLUE = 2
-COLOR_YELLOW = 3
 
 STACK = 0x7f00
 TEXT = 0x5500
@@ -38,7 +31,6 @@ def parse_operands(operands, text_labels=None, data_labels=None):
             optype = 'r'
         elif op[0] == '[' and op[-1] == ']':
             val = op[1:-1]
-            # do some validations
             if len(val) > 2:
                 aop, num = val[2], val[3:]
                 if aop not in ('+', '-'):
@@ -60,44 +52,98 @@ def parse_operands(operands, text_labels=None, data_labels=None):
     return operand_pairs
 
 
+class OpType(Enum):
+    MEMORY = 'm'
+    IMMEDIATE = 'i'
+    REGISTER = 'r'
+    DATAL = 'dl'
+    TEXTL = 'tl'
+
+
+class Operand:
+    def __init__(self, optype, value):
+        if optype not in OpType:
+            raise Exception('invalid optype %s' % optype)
+
+        self.optype = optype
+        self.value = value
+
+
+class Memory(MutableMapping):
+    def __init__(self, memory=None):
+        self.memory = defaultdict(int)
+        if memory:
+            self.update(memory)
+
+    def copy(self):
+        return Memory(self.memory)
+
+    def __getitem__(self, key):
+        return self.memory.__getitem__(key)
+
+    def __delitem__(self, key):
+        return self.memory.__delitem__(key)
+
+    def __setitem__(self, key, value):
+        return self.memory.__setitem__(key, value)
+
+    def __iter__(self):
+        return self.memory.__iter__()
+
+    def __len__(self):
+        return self.memory.__len__()
+
+
 class State:
     def __init__(self, registers=None, flags=None, memory=None):
         self.registers = {reg: 0 for reg in CPU._registers}
         if registers:
             self.registers.update(registers)
-        self.flags = {
-                'zf': 0,
-                }
+
+        self.flags = {'zf': 0}
         if flags:
             self.flags.update(flags)
+
         if memory:
             self.memory = memory
         else:
-            self.memory = defaultdict(int)
+            self.memory = Memory()
+
+    def __repr__(self):
+        return f'State({self.registers=}, {self.flags=}, {self.memory=})'
+
+    def copy(self):
+        return State(self.registers, self.flags, self.memory)
 
 
 class CPU:
     _registers = ['ax', 'bx', 'cx', 'dx', 'si', 'di', 'ip', 'bp', 'sp']
 
-    def __init__(self, program, offset=0, data=None):
-        self.instructions = program
-        self.states = [State()]
-        self.states[-1].registers['sp'] = STACK
-        self.states[-1].registers['bp'] = 0x1
+    def __init__(self, program, offset=0, data=None, state=None):
+        if data and state:
+            raise Exception('initial data and state cannot both be provided')
 
-        self._fix_offsets()
-        self.states[-1].registers['ip'] = offset + TEXT
-
-        self._load(data)
+        self.instructions = self._rewrite_labels(program.copy())
         self.data = data  # to detect if data is present
+
+        if state:
+            self.states = [state.copy()]
+        else:
+            self.states = [State()]
+            self.states[-1].registers['sp'] = STACK
+            self.states[-1].registers['bp'] = 0x1
+            self.states[-1].registers['ip'] = offset + TEXT
+            if data:
+                self._load(data)
 
     def _load(self, data):
         for addr in data:
-            self.memory[addr + DATA] = data[addr]
+            self.memory[addr + DATA] = data[addr] & 0xffff
 
-    def _fix_offsets(self):
-        for i in range(len(self.instructions)):
-            op, operands = self.instructions[i]
+    def _rewrite_labels(self, instructions):
+        newi = []
+        for i in range(len(instructions)):
+            op, operands = instructions[i]
             new_operands = []
             for operand in operands:
                 operand, optype = operand
@@ -108,11 +154,53 @@ class CPU:
                     operand = operand + DATA
                     optype = 'i'
                 new_operands.append((operand, optype))
-            self.instructions[i] = (op, new_operands)
+            newi.append((op, new_operands))
+
+        return newi
 
     def prev(self):
         if len(self.states) > 1:
             self.states.pop()
+
+    def _get_operand_value(self, operand, optype):
+        if optype == 'r':
+            return self.registers[operand]
+        elif optype == 'm':
+            addr = self._memory_operand(operand)
+            return self._read_memory(addr)
+        elif optype == 'i':
+            return operand & 0xffff
+        else:
+            raise Exception('unknown operand type %s' % optype)
+
+    def _set_operand_value(self, operand, optype, value):
+        if optype == 'r':
+            self.registers[operand] = value
+        elif optype == 'm':
+            addr = self._memory_operand(operand)
+            self._write_memory(addr, value)
+        else:
+            raise Exception('unknown operand type %s' % optype)
+
+    def _read_memory(self, addr):
+        b1, b2 = self.memory[addr], self.memory[addr+1]
+        return (b2 << 8) | b1
+
+    def _write_memory(self, addr, value):
+        self.memory[addr] = value & 0xff               # lower byte
+        self.memory[addr+1] = (value & 0xffff) >> 0x8  # upper byte
+
+    def _memory_operand(self, op):
+        addr = self.registers[op[:2]]
+        if op[2:]:
+            o, num = op[2], op[3:]
+            num = int(num, 16)
+            if o == '+':
+                addr = addr + num
+            elif o == '-':
+                addr = addr - num
+
+        return addr
 
     def op_ret(self, _):
         # TODO: annoying use of asm which cpu should not know much about - will
@@ -127,7 +215,7 @@ class CPU:
     def op_push(self, operand):
         self.op_sub(parse_operands('sp,0x02'))
         stack = parse_operands('[sp]')
-        self.op_mov((stack[0], operand[0]))
+        self.op_mov((stack[0], operand[0]), force=True)
 
     def op_pop(self, operand):
         stack = parse_operands('[sp]')
@@ -136,18 +224,12 @@ class CPU:
 
     def op_jmp(self, operand):
         dest, desttype = operand[0]
-        if desttype == 'r':
-            dest = self.registers[dest]
-        elif desttype == 'm':
-            addr = self._memory_operand(dest)
-            dest1 = self.memory[addr]
-            dest2 = self.memory[addr+1]
-            dest = (dest2 << 8) + dest1
+        addr = self._get_operand_value(dest, desttype)
 
-        if dest & 0xff00 != TEXT:
-            raise Exception('invalid jmp target %x' % dest)
+        if addr & 0xff00 != TEXT:
+            raise Exception('invalid jmp target %x' % addr)
 
-        self.states[-1].registers['ip'] = dest
+        self.states[-1].registers['ip'] = addr
 
     def op_jne(self, operand):
         if self.flags['zf'] == 0:
@@ -168,40 +250,13 @@ class CPU:
         if desttype == 'i':
             raise Exception('invalid dest operand')
 
-        if srctype == 'r':
-            val = self.registers[src]
-        elif srctype == 'm':
-            addr = self._memory_operand(src)
-            val = self.memory[addr] & 0xffff
-        elif srctype == 'i':
-            val = src & 0xffff
-        else:
-            raise Exception('unknown src operand type %s' % srctype)
+        srcval = self._get_operand_value(src, srctype)
+        destval = self._get_operand_value(dest, desttype)
 
-        if desttype == 'r':
-            res = self.registers[dest] - val
-        elif desttype == 'm':
-            addr = self._memory_operand(dest)
-            res = self.memory[addr] - val
-        else:
-            raise Exception('unknown dest operand type')
-
-        if res == 0:
+        if destval - srcval == 0:
             self.states[-1].flags['zf'] = 1
         else:
             self.states[-1].flags['zf'] = 0
-
-    def _memory_operand(self, op):
-        addr = self.registers[op[:2]]
-        if op[2:]:
-            o, num = op[2], op[3:]
-            num = int(num, 16)
-            if o == '+':
-                addr = addr + num
-            elif o == '-':
-                addr = addr - num
-
-        return addr
 
     def op_sub(self, operands):
         dest, src = operands
@@ -214,29 +269,13 @@ class CPU:
         if desttype == 'i':
             raise Exception('invalid dest operand')
 
-        if srctype == 'r':
-            val = self.registers[src]
-        elif srctype == 'm':
-            addr = self._memory_operand(src)
-            val = self.memory[addr] & 0xffff
-        elif srctype == 'i':
-            val = src & 0xffff
-        else:
-            raise Exception('unknown src operand type')
+        destval = self._get_operand_value(dest, desttype)
+        srcval = self._get_operand_value(src, srctype)
+        res = destval - srcval
 
-        if desttype == 'r':
-            newval = self.registers[dest] - val
-            self.registers[dest] = newval
-        elif desttype == 'm':
-            addr = self._memory_operand(dest)
-            if addr & 0xff000000 != STACK:
-                raise Exception('memory access out of bounds')
-            newval = self.memory[addr] - val
-            self.registers[addr] = newval
-        else:
-            raise Exception('unknown dest operand type')
+        self._set_operand_value(dest, desttype, res)
 
-        if newval == 0:
+        if res == 0:
             self.flags['zf'] = 1
         else:
             self.flags['zf'] = 0
@@ -252,23 +291,9 @@ class CPU:
         if desttype == 'i':
             raise Exception('invalid dest operand')
 
-        if srctype == 'r':
-            val = self.registers[src]
-        elif srctype == 'm':
-            addr = self._memory_operand(src)
-            val = self.memory[addr] & 0xffff
-        elif srctype == 'i':
-            val = src & 0xffff
-        else:
-            raise Exception('unknown src operand type')
-
-        if desttype == 'r':
-            self.registers[dest] += val
-        elif desttype == 'm':
-            addr = self._memory_operand(dest)
-            self.memory[addr] += val
-        else:
-            raise Exception('unknown dest operand type')
+        opval = self._get_operand_value(src, srctype)
+        val = self._get_operand_value(dest, desttype)
+        self._set_operand_value(dest, desttype, val + opval)
 
     def op_mul(self, operands):
         dest, src = operands
@@ -276,62 +301,33 @@ class CPU:
         dest, desttype = dest
         src, srctype = src
 
-        if srctype == 'm' and desttype == 'm':
-            raise Exception('invalid source,dest pair (%s)' % (operands))
         if desttype != 'r':
             raise Exception('invalid dest operand')
 
-        if srctype == 'r':
-            val = self.registers[src]
-        elif srctype == 'm':
-            addr = self._memory_operand(src)
-            val = self.memory[addr] & 0xffff
-        elif srctype == 'i':
-            val = src & 0xffff
-        else:
-            raise Exception('unknown src operand type')
+        opval = self._get_operand_value(src, srctype)
+        val = self._get_operand_value(dest, desttype)
+        self._set_operand_value(dest, desttype, val * opval)
 
-        if desttype == 'r':
-            self.registers[dest] = (val * self.registers[dest]) & 0xffff
-        elif desttype == 'm':
-            addr = self._memory_operand(dest)
-            self.memory[addr] = (val * self.memory[addr]) & 0xffff
-        else:
-            raise Exception('unknown dest operand type')
-
-    def op_mov(self, operands):
+    def op_mov(self, operands, force=False):
         dest, src = operands
 
         dest, desttype = dest
         src, srctype = src
 
-        if srctype == 'm' and desttype == 'm':
+        if srctype == 'm' and desttype == 'm' and not force:
             raise Exception('invalid source,dest pair (%s)' % (operands))
+
         if desttype == 'i':
             raise Exception('invalid dest operand')
 
-        if srctype == 'r':
-            val = self.registers[src]
-        elif srctype == 'm':
-            addr = self._memory_operand(src)
-            val = self.memory[addr] & 0xff
-            val |= self.memory[addr+1] << 0x8
-        elif srctype == 'i':
-            val = src & 0xffff
-        else:
-            raise Exception('unknown src operand type %s' % srctype)
-
-        if desttype == 'r':
-            self.registers[dest] = val
-        elif desttype == 'm':
+        if desttype == 'm':
             addr = self._memory_operand(dest)
             if addr & 0xf000 != 0x7000:
                 raise Exception(
                         f'runtime error: invalid memory address {addr:#06x}')
-            self.memory[addr] = val & 0xff  # lower byte
-            self.memory[addr+1] = val >> 0x8  # upper byte
-        else:
-            raise Exception('unknown dest operand type')
+
+        opval = self._get_operand_value(src, srctype)
+        self._set_operand_value(dest, desttype, opval)
 
     def execute(self):
         self.states.append(State(self.registers.copy(), self.flags.copy(),
@@ -340,31 +336,10 @@ class CPU:
         ip = self.ip
         self.states[-1].registers['ip'] += 1
         op, operands = self.instructions[ip - TEXT]
-        # TODO: membership list vs elif chain
-        if op == 'mov':
-            self.op_mov(operands)
-        elif op == 'mul':
-            self.op_mul(operands)
-        elif op == 'add':
-            self.op_add(operands)
-        elif op == 'sub':
-            self.op_sub(operands)
-        elif op == 'cmp':
-            self.op_cmp(operands)
-        elif op == 'jmp':
-            self.op_jmp(operands)
-        elif op == 'jne':
-            self.op_jne(operands)
-        elif op == 'je':
-            self.op_je(operands)
-        elif op == 'push':
-            self.op_push(operands)
-        elif op == 'pop':
-            self.op_pop(operands)
-        elif op == 'call':
-            self.op_call(operands)
-        elif op == 'ret':
-            self.op_ret(operands)
+        ops = [x for x in self.__dict__() if x.startswith('op_')]
+        if op in ops:
+            opfunc = getattr(self, f'op_{op}')
+            opfunc(operands)
         else:
             raise Exception('unsupported operation "%s"' % op)
 
