@@ -10,46 +10,44 @@ TEXT = 0x5500
 DATA = 0x6b00
 
 
+def parse_operand(op, text_labels=None, data_labels=None):
+    op = op.strip()
+    if op in text_labels:
+        return Operand.from_optype(OpType.TEXTL, text_labels[op])
+    elif op in data_labels:
+        return Operand.from_optype(OpType.DATAL, data_labels[op])
+    elif len(op) == 2 and op.isalpha():
+        return Operand.from_optype(OpType.REGISTER, Register(op))
+    elif op.startswith('[') and op.endswith(']'):
+        op = op[1:-1]
+        offset = op[2:]
+        op = op[:2]
+        if offset:
+            try:
+                val = int(offset, 16)
+                return Operand.from_optype(OpType.MEMORY, Register(op), val)
+            except ValueError:
+                raise
+        return Operand.from_optype(OpType.MEMORY, Register(op))
+    else:
+        try:
+            val = int(op, 16)
+            return Operand.from_optype(OpType.IMMEDIATE, val)
+        except ValueError:
+            raise Exception('invalid operand "%s"' % op)
+
+
 def parse_operands(operands, text_labels=None, data_labels=None):
     if not text_labels:
         text_labels = tuple()
     if not data_labels:
         data_labels = tuple()
 
-    operand_pairs = []
+    ret = []
     for op in operands.split(','):
-        optype = None
-        op = op.strip()
-        if op in text_labels:
-            val = text_labels[op]
-            optype = 'tl'
-        elif op in data_labels:
-            val = data_labels[op]
-            optype = 'dl'
-        elif len(op) == 2 and op.isalpha() and op in CPU._registers:
-            val = op
-            optype = 'r'
-        elif op[0] == '[' and op[-1] == ']':
-            val = op[1:-1]
-            if len(val) > 2:
-                aop, num = val[2], val[3:]
-                if aop not in ('+', '-'):
-                    raise Exception('invalid operand addressing "%s"' % op)
-                try:
-                    int(num, 16)
-                except ValueError:
-                    raise Exception('invalid operand addressing "%s"' % op)
-            optype = 'm'
-        else:
-            try:
-                val = int(op, 16)
-                optype = 'i'
-            except ValueError:
-                raise Exception('invalid operand "%s"' % op)
+        ret.append(parse_operand(op, text_labels, data_labels))
 
-        operand_pairs.append((val, optype))
-
-    return operand_pairs
+    return ret
 
 
 class OpType(Enum):
@@ -60,6 +58,18 @@ class OpType(Enum):
     TEXTL = 'tl'
 
 
+class Register(Enum):
+    AX = 'ax'
+    BX = 'bx'
+    CX = 'cx'
+    DX = 'dx'
+    DI = 'di'
+    SI = 'si'
+    BP = 'bp'
+    SP = 'sp'
+    IP = 'ip'
+
+
 class Operand:
     def __init__(self, optype, value):
         if optype not in OpType:
@@ -67,6 +77,39 @@ class Operand:
 
         self.optype = optype
         self.value = value
+
+    def __eq__(self, other):
+        return self.optype == other.optype and self.value == other.value
+
+    def __repr__(self):
+        return f'Operand({self.optype}, {self.value})'
+
+    @classmethod
+    def from_optype(cls, optype, *args, **kwargs):
+        if optype == OpType.REGISTER:
+            return RegisterOp(*args, **kwargs)
+        elif optype == OpType.MEMORY:
+            return MemoryOp(*args, **kwargs)
+        elif optype == OpType.IMMEDIATE:
+            return ImmediateOp(*args, **kwargs)
+
+
+class RegisterOp(Operand):
+    def __init__(self, register):
+        if register not in Register:
+            raise Exception('invalid register %s' % register)
+        super().__init__(OpType.REGISTER, register)
+
+
+class MemoryOp(Operand):
+    def __init__(self, address, offset=0):
+        super().__init__(OpType.MEMORY, address)
+        self.offset = offset
+
+
+class ImmediateOp(Operand):
+    def __init__(self, address):
+        super().__init__(OpType.IMMEDIATE, address)
 
 
 class Memory(MutableMapping):
@@ -116,6 +159,31 @@ class State:
         return State(self.registers, self.flags, self.memory)
 
 
+# Instructions to implement:
+#
+# shl   r/m16,imm8
+# shl   r/m16,cl
+# shr   r/m16,imm8
+# shr   r/m16,cl
+# test  r/m16,imm16
+# xor   r/m16,imm16
+# xor   r/m16,r16
+# not   r/m16
+# or    r/m16,imm16
+# or    r/m16,r16
+# and   r/m16,imm16
+# and   r16,r/m16
+# out   imm8,ax
+# out   dx,ax
+# in    ax,imm8
+# in    ax,dx
+#
+# imul - after adding signed values, sign extension, etc.
+# idiv - ""
+# hlt
+# lea - after adding more addressing modes
+
+
 class CPU:
     _registers = ['ax', 'bx', 'cx', 'dx', 'si', 'di', 'ip', 'bp', 'sp']
 
@@ -146,14 +214,13 @@ class CPU:
             op, operands = instructions[i]
             new_operands = []
             for operand in operands:
-                operand, optype = operand
-                if optype == 'tl':
-                    operand = operand + TEXT
-                    optype = 'i'
-                elif optype == 'dl':
-                    operand = operand + DATA
-                    optype = 'i'
-                new_operands.append((operand, optype))
+                if operand.optype == OpType.TEXTL:
+                    operand = Operand.from_optype(OpType.IMMEDIATE,
+                                                  operand.value + TEXT)
+                elif operand.optype == OpType.DATAL:
+                    operand = Operand.from_optype(OpType.IMMEDIATE,
+                                                  operand.value + DATA)
+                new_operands.append(operand)
             newi.append((op, new_operands))
 
         return newi
@@ -162,25 +229,25 @@ class CPU:
         if len(self.states) > 1:
             self.states.pop()
 
-    def _get_operand_value(self, operand, optype):
-        if optype == 'r':
-            return self.registers[operand]
-        elif optype == 'm':
-            addr = self._memory_operand(operand)
+    def _get_operand_value(self, operand):
+        if operand.optype == OpType.REGISTER:
+            return self.registers[operand.value.value]
+        elif operand.optype == OpType.MEMORY:
+            addr = self.registers[operand.value.value] + operand.offset
             return self._read_memory(addr)
-        elif optype == 'i':
-            return operand & 0xffff
+        elif operand.optype == OpType.IMMEDIATE:
+            return operand.value
         else:
-            raise Exception('unknown operand type %s' % optype)
+            raise Exception('unknown operand type %s' % operand.optype)
 
-    def _set_operand_value(self, operand, optype, value):
-        if optype == 'r':
-            self.registers[operand] = value & 0xffff
-        elif optype == 'm':
-            addr = self._memory_operand(operand)
+    def _set_operand_value(self, operand, value):
+        if operand.optype == OpType.REGISTER:
+            self.registers[operand.value.value] = value & 0xffff
+        elif operand.optype == OpType.MEMORY:
+            addr = self.registers[operand.value.value] + operand.offset
             self._write_memory(addr, value)
         else:
-            raise Exception('unknown operand type %s' % optype)
+            raise Exception('unknown operand type %s' % operand)
 
     def _read_memory(self, addr):
         b1, b2 = self.memory[addr], self.memory[addr+1]
@@ -191,46 +258,29 @@ class CPU:
         self.memory[addr] = value & 0xff    # lower byte
         self.memory[addr+1] = value >> 0x8  # upper byte
 
-    def _memory_operand(self, op):
-        addr = self.registers[op[:2]]
-        if op[2:]:
-            o, num = op[2], op[3:]
-            num = int(num, 16)
-            if o == '+':
-                addr = addr + num
-            elif o == '-':
-                addr = addr - num
-
-        return addr
-
     def op_ret(self):
-        # TODO: annoying use of asm which cpu should not know much about - will
-        # replace with operand classes
-        self.op_jmp(*parse_operands('[sp]'))
-        self.op_add(*parse_operands('sp,0x02'))
+        self.op_jmp(MemoryOp(Register.SP))
+        self.op_add(RegisterOp(Register.SP), ImmediateOp(0x02))
 
     def op_call(self, operand):
-        self.op_push(parse_operands('ip')[0])
+        self.op_push(RegisterOp(Register.IP))
         self.op_jmp(operand)
 
-    def op_push(self, operand):
-        self.op_sub(*parse_operands('sp,0x02'))
-        stack = parse_operands('[sp]')
-        self.op_mov(stack[0], operand, force=True)
+    def op_push(self, source):
+        self.op_sub(RegisterOp(Register.SP), ImmediateOp(0x02))
+        self.op_mov(MemoryOp(Register.SP), source, force=True)
 
-    def op_pop(self, operand):
-        stack = parse_operands('[sp]')[0]
-        self.op_mov(operand, stack)
-        self.op_add(*parse_operands('sp,0x02'))
+    def op_pop(self, dest):
+        self.op_mov(dest, MemoryOp(Register.SP))
+        self.op_add(RegisterOp(Register.SP), ImmediateOp(0x02))
 
-    def op_jmp(self, operand):
-        dest, desttype = operand
-        addr = self._get_operand_value(dest, desttype)
+    def op_jmp(self, dest):
+        addr = self._get_operand_value(dest)
 
         if addr & 0xff00 != TEXT:
             raise Exception('invalid jmp target %x' % addr)
 
-        self.states[-1].registers['ip'] = addr
+        self.registers['ip'] = addr
 
     def op_jne(self, operand):
         if self.flags['zf'] == 0:
@@ -241,18 +291,13 @@ class CPU:
             self.op_jmp(operand)
 
     def op_cmp(self, dest, src):
-        # dest, src = operands
-
-        dest, desttype = dest
-        src, srctype = src
-
-        if srctype == 'm' and desttype == 'm':
+        if src.optype == OpType.MEMORY and dest.optype == OpType.MEMORY:
             raise Exception('invalid source,dest pair (%s,%s)' % (dest, src))
-        if desttype == 'i':
+        if dest.optype == OpType.IMMEDIATE:
             raise Exception('invalid dest operand')
 
-        srcval = self._get_operand_value(src, srctype)
-        destval = self._get_operand_value(dest, desttype)
+        srcval = self._get_operand_value(src)
+        destval = self._get_operand_value(dest)
 
         if destval - srcval == 0:
             self.states[-1].flags['zf'] = 1
@@ -260,21 +305,16 @@ class CPU:
             self.states[-1].flags['zf'] = 0
 
     def op_sub(self, dest, src):
-        # dest, src = operands
-
-        dest, desttype = dest
-        src, srctype = src
-
-        if srctype == 'm' and desttype == 'm':
+        if src.optype == OpType.MEMORY and dest.optype == OpType.MEMORY:
             raise Exception('invalid source,dest pair (%s,%s)' % (dest, src))
-        if desttype == 'i':
+        if dest.optype == OpType.IMMEDIATE:
             raise Exception('invalid dest operand')
 
-        destval = self._get_operand_value(dest, desttype)
-        srcval = self._get_operand_value(src, srctype)
+        destval = self._get_operand_value(dest)
+        srcval = self._get_operand_value(src)
         res = destval - srcval
 
-        self._set_operand_value(dest, desttype, res)
+        self._set_operand_value(dest, res)
 
         if res == 0:
             self.flags['zf'] = 1
@@ -282,30 +322,23 @@ class CPU:
             self.flags['zf'] = 0
 
     def op_add(self, dest, src):
-        # dest, src = operands
-
-        dest, desttype = dest
-        src, srctype = src
-
-        if srctype == 'm' and desttype == 'm':
+        if src.optype == OpType.MEMORY and dest.optype == OpType.MEMORY:
             raise Exception('invalid source,dest pair (%s,%s)' % (dest, src))
-        if desttype == 'i':
+        if dest.optype == OpType.IMMEDIATE:
             raise Exception('invalid dest operand')
 
-        opval = self._get_operand_value(src, srctype)
-        val = self._get_operand_value(dest, desttype)
-        self._set_operand_value(dest, desttype, val + opval)
+        opval = self._get_operand_value(src)
+        val = self._get_operand_value(dest)
+        self._set_operand_value(dest, val + opval)
 
     def op_mul(self, operand):
-        op, optype = operand
+        if operand.optype not in (OpType.REGISTER, OpType.MEMORY):
+            raise Exception('invalid operand "%s"' % operand)
 
-        if optype not in ('r', 'm'):
-            raise Exception('invalid operand "%s"', operand)
-
-        opval = self._get_operand_value(op, optype)
-        res = (opval * self.registers['ax']) & 0xffffffff
-        self.registers['dx'] = res >> 16     # high byte
-        self.registers['ax'] = res & 0xffff  # low byte
+        multiplier = self._get_operand_value(operand)
+        product = (multiplier * self.registers['ax']) & 0xffffffff
+        self.registers['dx'] = product >> 16     # high byte
+        self.registers['ax'] = product & 0xffff  # low byte
 
         if self.registers['dx'] == 0:
             self.flags['cf'] = 0
@@ -314,27 +347,41 @@ class CPU:
             self.flags['cf'] = 1
             self.flags['of'] = 1
 
+    def op_div(self, operand):
+        if operand.optype not in (OpType.REGISTER, OpType.MEMORY):
+            raise Exception('invalid operand "%s"' % operand)
+
+        divisor = self._get_operand_value(operand)
+
+        dividend = self.registers['ax'] & 0xffff
+        dividend |= self.registers['dx'] << 16
+
+        quotient = int(dividend / divisor)
+        if quotient > 0xFFFFFFFF:
+            raise Exception("divide error")
+        self._set_operand_value(RegisterOp(Register.AX), quotient)
+
+        remainder = dividend % divisor
+        self._set_operand_value(RegisterOp(Register.DX), remainder)
+
     def op_mov(self, dest, src, force=False):
-        # dest, src = operands
+        if src.optype == OpType.MEMORY and dest.optype == OpType.MEMORY:
+            if not force:
+                raise Exception('invalid source,dest pair (%s)'
+                                % tuple([dest, src]))
 
-        dest, desttype = dest
-        src, srctype = src
-
-        if srctype == 'm' and desttype == 'm' and not force:
-            raise Exception('invalid source,dest pair (%s)'
-                            % tuple([dest, src]))
-
-        if desttype == 'i':
+        if dest.optype == OpType.IMMEDIATE:
             raise Exception('invalid dest operand')
 
-        if desttype == 'm':
-            addr = self._memory_operand(dest)
+        if dest.optype == OpType.MEMORY:
+            # i shouldn't keep typing this
+            addr = self.registers[dest.value.value] + dest.offset
             if addr & 0xf000 != 0x7000:
                 raise Exception(
                         f'runtime error: invalid memory address {addr:#06x}')
 
-        opval = self._get_operand_value(src, srctype)
-        self._set_operand_value(dest, desttype, opval)
+        opval = self._get_operand_value(src)
+        self._set_operand_value(dest, opval)
 
     def op_hlt(self):
         # TODO: handle this and simply display/stop taking input
@@ -343,39 +390,12 @@ class CPU:
     def op_nop(self):
         return
 
-    def op_whatever(self, operands):
-        # shl   r/m16,imm8
-        # shl   r/m16,cl
-        # shr   r/m16,imm8
-        # shr   r/m16,cl
-        # test  r/m16,imm16
-        # xor   r/m16,imm16
-        # xor   r/m16,r16
-        # not   r/m16
-        # or    r/m16,imm16
-        # or    r/m16,r16
-        # and   r/m16,imm16
-        # and   r16,r/m16
-        # out   imm8,ax
-        # out   dx,ax
-        # in    ax,imm8
-        # in    ax,dx
-        # mul   r/m16  # Unsigned multiply (DX:AX := AX ∗ r/m16).
-        # div   r/m16  # Unsigned divide DX:AX by r/m16
-        #              # with result stored in AX := Quotient, DX := Remainder.
-        #
-        # imul - after adding signed values, sign extension, etc.
-        # idiv - ""
-        # hlt
-        # lea - after adding more addressing modes
-        pass
-
     def execute(self):
         self.states.append(State(self.registers.copy(), self.flags.copy(),
                                  self.memory.copy()))
 
         ip = self.ip
-        self.states[-1].registers['ip'] += 1
+        self.registers['ip'] += 1
         op, operands = self.instructions[ip - TEXT]
         op = 'op_' + op
         opfunc = getattr(self, op, None)
