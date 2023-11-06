@@ -100,7 +100,7 @@ class State:
         if registers:
             self.registers.update(registers)
 
-        self.flags = {'zf': 0}
+        self.flags = {'zf': 0, 'cf': 0, 'of': 0}
         if flags:
             self.flags.update(flags)
 
@@ -175,7 +175,7 @@ class CPU:
 
     def _set_operand_value(self, operand, optype, value):
         if optype == 'r':
-            self.registers[operand] = value
+            self.registers[operand] = value & 0xffff
         elif optype == 'm':
             addr = self._memory_operand(operand)
             self._write_memory(addr, value)
@@ -187,8 +187,9 @@ class CPU:
         return (b2 << 8) | b1
 
     def _write_memory(self, addr, value):
-        self.memory[addr] = value & 0xff               # lower byte
-        self.memory[addr+1] = (value & 0xffff) >> 0x8  # upper byte
+        value = value & 0xffff
+        self.memory[addr] = value & 0xff    # lower byte
+        self.memory[addr+1] = value >> 0x8  # upper byte
 
     def _memory_operand(self, op):
         addr = self.registers[op[:2]]
@@ -202,28 +203,28 @@ class CPU:
 
         return addr
 
-    def op_ret(self, _):
+    def op_ret(self):
         # TODO: annoying use of asm which cpu should not know much about - will
         # replace with operand classes
-        self.op_jmp(parse_operands('[sp]'))
-        self.op_add(parse_operands('sp,0x02'))
+        self.op_jmp(*parse_operands('[sp]'))
+        self.op_add(*parse_operands('sp,0x02'))
 
     def op_call(self, operand):
-        self.op_push(parse_operands('ip'))
+        self.op_push(parse_operands('ip')[0])
         self.op_jmp(operand)
 
     def op_push(self, operand):
-        self.op_sub(parse_operands('sp,0x02'))
+        self.op_sub(*parse_operands('sp,0x02'))
         stack = parse_operands('[sp]')
-        self.op_mov((stack[0], operand[0]), force=True)
+        self.op_mov(stack[0], operand, force=True)
 
     def op_pop(self, operand):
-        stack = parse_operands('[sp]')
-        self.op_mov((operand[0], stack[0]))
-        self.op_add(parse_operands('sp,0x02'))
+        stack = parse_operands('[sp]')[0]
+        self.op_mov(operand, stack)
+        self.op_add(*parse_operands('sp,0x02'))
 
     def op_jmp(self, operand):
-        dest, desttype = operand[0]
+        dest, desttype = operand
         addr = self._get_operand_value(dest, desttype)
 
         if addr & 0xff00 != TEXT:
@@ -239,14 +240,14 @@ class CPU:
         if self.flags['zf'] == 1:
             self.op_jmp(operand)
 
-    def op_cmp(self, operands):
-        dest, src = operands
+    def op_cmp(self, dest, src):
+        # dest, src = operands
 
         dest, desttype = dest
         src, srctype = src
 
         if srctype == 'm' and desttype == 'm':
-            raise Exception('invalid source,dest pair (%s)' % (operands))
+            raise Exception('invalid source,dest pair (%s,%s)' % (dest, src))
         if desttype == 'i':
             raise Exception('invalid dest operand')
 
@@ -258,14 +259,14 @@ class CPU:
         else:
             self.states[-1].flags['zf'] = 0
 
-    def op_sub(self, operands):
-        dest, src = operands
+    def op_sub(self, dest, src):
+        # dest, src = operands
 
         dest, desttype = dest
         src, srctype = src
 
         if srctype == 'm' and desttype == 'm':
-            raise Exception('invalid source,dest pair (%s)' % (operands))
+            raise Exception('invalid source,dest pair (%s,%s)' % (dest, src))
         if desttype == 'i':
             raise Exception('invalid dest operand')
 
@@ -280,14 +281,14 @@ class CPU:
         else:
             self.flags['zf'] = 0
 
-    def op_add(self, operands):
-        dest, src = operands
+    def op_add(self, dest, src):
+        # dest, src = operands
 
         dest, desttype = dest
         src, srctype = src
 
         if srctype == 'm' and desttype == 'm':
-            raise Exception('invalid source,dest pair (%s)' % (operands))
+            raise Exception('invalid source,dest pair (%s,%s)' % (dest, src))
         if desttype == 'i':
             raise Exception('invalid dest operand')
 
@@ -295,27 +296,33 @@ class CPU:
         val = self._get_operand_value(dest, desttype)
         self._set_operand_value(dest, desttype, val + opval)
 
-    def op_mul(self, operands):
-        dest, src = operands
+    def op_mul(self, operand):
+        op, optype = operand
 
-        dest, desttype = dest
-        src, srctype = src
+        if optype not in ('r', 'm'):
+            raise Exception('invalid operand "%s"', operand)
 
-        if desttype != 'r':
-            raise Exception('invalid dest operand')
+        opval = self._get_operand_value(op, optype)
+        res = (opval * self.registers['ax']) & 0xffffffff
+        self.registers['dx'] = res >> 16     # high byte
+        self.registers['ax'] = res & 0xffff  # low byte
 
-        opval = self._get_operand_value(src, srctype)
-        val = self._get_operand_value(dest, desttype)
-        self._set_operand_value(dest, desttype, val * opval)
+        if self.registers['dx'] == 0:
+            self.flags['cf'] = 0
+            self.flags['of'] = 0
+        else:
+            self.flags['cf'] = 1
+            self.flags['of'] = 1
 
-    def op_mov(self, operands, force=False):
-        dest, src = operands
+    def op_mov(self, dest, src, force=False):
+        # dest, src = operands
 
         dest, desttype = dest
         src, srctype = src
 
         if srctype == 'm' and desttype == 'm' and not force:
-            raise Exception('invalid source,dest pair (%s)' % (operands))
+            raise Exception('invalid source,dest pair (%s)'
+                            % tuple([dest, src]))
 
         if desttype == 'i':
             raise Exception('invalid dest operand')
@@ -329,6 +336,40 @@ class CPU:
         opval = self._get_operand_value(src, srctype)
         self._set_operand_value(dest, desttype, opval)
 
+    def op_hlt(self):
+        # TODO: handle this and simply display/stop taking input
+        raise Exception('halt!')
+
+    def op_nop(self):
+        return
+
+    def op_whatever(self, operands):
+        # shl   r/m16,imm8
+        # shl   r/m16,cl
+        # shr   r/m16,imm8
+        # shr   r/m16,cl
+        # test  r/m16,imm16
+        # xor   r/m16,imm16
+        # xor   r/m16,r16
+        # not   r/m16
+        # or    r/m16,imm16
+        # or    r/m16,r16
+        # and   r/m16,imm16
+        # and   r16,r/m16
+        # out   imm8,ax
+        # out   dx,ax
+        # in    ax,imm8
+        # in    ax,dx
+        # mul   r/m16  # Unsigned multiply (DX:AX := AX ∗ r/m16).
+        # div   r/m16  # Unsigned divide DX:AX by r/m16
+        #              # with result stored in AX := Quotient, DX := Remainder.
+        #
+        # imul - after adding signed values, sign extension, etc.
+        # idiv - ""
+        # hlt
+        # lea - after adding more addressing modes
+        pass
+
     def execute(self):
         self.states.append(State(self.registers.copy(), self.flags.copy(),
                                  self.memory.copy()))
@@ -336,10 +377,10 @@ class CPU:
         ip = self.ip
         self.states[-1].registers['ip'] += 1
         op, operands = self.instructions[ip - TEXT]
-        ops = [x for x in self.__dict__() if x.startswith('op_')]
-        if op in ops:
-            opfunc = getattr(self, f'op_{op}')
-            opfunc(operands)
+        op = 'op_' + op
+        opfunc = getattr(self, op, None)
+        if opfunc:
+            opfunc(*operands)
         else:
             raise Exception('unsupported operation "%s"' % op)
 

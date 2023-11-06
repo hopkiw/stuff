@@ -93,59 +93,58 @@ class CPUTest(unittest.TestCase):
         # confirm raises, test supported combinations
         cpu = CPU([])
 
-        cpu.op_mov((('ax', 'r'), (STACK, 'i')))
+        cpu.op_mov(('ax', 'r'), (STACK, 'i'))
         self.assertEqual(STACK, cpu.registers['ax'])
 
-        cpu.op_mov((('bx', 'r'), ('ax', 'r')))
+        cpu.op_mov(('bx', 'r'), ('ax', 'r'))
         self.assertEqual(STACK, cpu.registers['bx'])
 
-        cpu.op_mov((('ax', 'm'), ('ax', 'r')))
+        cpu.op_mov(('ax', 'm'), ('ax', 'r'))
         self.assertEqual(STACK, cpu._read_memory(STACK))
 
         with self.assertRaises(Exception):
-            cpu.op_mov((('ax', 'm'), ('ax', 'm')))
+            cpu.op_mov(('ax', 'm'), ('ax', 'm'))
 
         with self.assertRaises(Exception):
-            cpu.op_mov((('0x1', 'i'), ('ax', 'r')))
+            cpu.op_mov(('0x1', 'i'), ('ax', 'r'))
 
         with self.assertRaises(Exception):
             state = State(registers={'ax': 0x1234, 'bx': 0x22})
             cpu = CPU([], state=state)
-            cpu.op_mov((('ax', 'm'), ('bx', 'r')))
+            cpu.op_mov(('ax', 'm'), ('bx', 'r'))
 
     def test_op_mul(self):
-        state = State(registers={'ax': 0x2, 'bx': 0x3, 'cx': 0x4},
-                      memory=Memory({0x4: 2, 0x5: 0}))
+        state = State(registers={'ax': 0x10, 'bx': 0x3, 'cx': 0x4},
+                      memory=Memory({0x4: 0xef, 0x5: 0xbe}))
 
         # For fun, go-style tests:
         class Test:
-            def __init__(self, dest, src, res):
-                self.dest = dest
-                self.src = src
-                self.res = res
+            def __init__(self, multiplier, ax, dx, cf, of):
+                self.multiplier = multiplier
+                self.ax = ax
+                self.dx = dx
+                self.cf = cf
+                self.of = of
 
             def __repr__(self):
                 return str(self.__dict__)
 
         for test in (
-                Test(('bx', 'r'), (0x2, 'i'), 0x6),
-                Test(('ax', 'r'), ('ax', 'r'), 0x4),
-                Test(('bx', 'r'), ('cx', 'm'), 0x6),
+                Test(('bx', 'r'), 0x30, 0, 0, 0),
+                Test(('cx', 'm'), 0xeef0, 0xb, 1, 1),
                 ):
 
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
-                cpu.op_mul((test.dest, test.src))
-                register, _ = test.dest
-                self.assertEqual(test.res, cpu.registers[register])
+                cpu.op_mul(test.multiplier)
+                self.assertEqual(test.ax, cpu.registers['ax'])
+                self.assertEqual(test.dx, cpu.registers['dx'])
+                self.assertEqual(test.cf, cpu.flags['cf'])
+                self.assertEqual(test.of, cpu.flags['of'])
 
         with self.assertRaises(Exception):
             cpu = CPU([])
-            cpu.op_mul(('ax', 'm'), ('ax', 'r'))  # Only 'r' dest
-
-        with self.assertRaises(Exception):
-            cpu = CPU([])
-            cpu.op_mul((0x1, 'i'), ('ax', 'r'))  # Only 'r' dest
+            cpu.op_mul((0x1, 'i'))  # invalid optype
 
     def test_op_add(self):
         state = State(registers={'ax': 0x2, 'bx': 0x3, 'cx': 0x4},
@@ -168,7 +167,7 @@ class CPUTest(unittest.TestCase):
 
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
-                cpu.op_add((test.dest, test.src))
+                cpu.op_add(test.dest, test.src)
                 register, _ = test.dest
                 self.assertEqual(test.res, cpu.registers[register])
 
@@ -194,7 +193,7 @@ class CPUTest(unittest.TestCase):
 
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
-                cpu.op_sub((test.dest, test.src))
+                cpu.op_sub(test.dest, test.src)
                 register, _ = test.dest
                 self.assertEqual(test.res, cpu.registers[register])
 
@@ -222,16 +221,16 @@ class CPUTest(unittest.TestCase):
 
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
-                cpu.op_cmp((test.dest, test.src))
+                cpu.op_cmp(test.dest, test.src)
                 self.assertEqual(test.res, cpu.flags['zf'])
 
         with self.assertRaises(Exception):
             cpu = CPU([], state=state.copy())
-            cpu.op_cmp(('bx', 'm'), ('ax', 'm'))
+            cpu.op_cmp('bx', 'm'), ('ax', 'm')
 
         with self.assertRaises(Exception):
             cpu = CPU([], state=state.copy())
-            cpu.op_cmp((1, 'i'), ('ax', 'm'))
+            cpu.op_cmp(1, 'i'), ('ax', 'm')
 
     def test_op_jmp(self):
         state = State(registers={'ax': 0x2, 'bx': 0x5517, 'cx': 0x4},
@@ -246,8 +245,8 @@ class CPUTest(unittest.TestCase):
                 return str(self.__dict__)
 
         for test in (
-                Test((('bx', 'r'),), 0x5517),
-                Test((('cx', 'm'),), 0x5510)
+                Test(('bx', 'r'), 0x5517),
+                Test(('cx', 'm'), 0x5510)
                 ):
 
             with self.subTest(test=test):
@@ -269,10 +268,10 @@ class CPUTest(unittest.TestCase):
                 return str(self.__dict__)
 
         for test in (
-                Test((('bx', 'r'),), 0, 0x5517),
-                Test((('bx', 'r'),), 1, 0),
-                Test((('cx', 'm'),), 0, 0x5510),
-                Test((('cx', 'm'),), 1, 0)
+                Test(('bx', 'r'), 0, 0x5517),
+                Test(('bx', 'r'), 1, 0),
+                Test(('cx', 'm'), 0, 0x5510),
+                Test(('cx', 'm'), 1, 0)
                 ):
 
             with self.subTest(test=test):
@@ -295,10 +294,10 @@ class CPUTest(unittest.TestCase):
                 return str(self.__dict__)
 
         for test in (
-                Test((('bx', 'r'),), 1, 0x5517),
-                Test((('bx', 'r'),), 0, 0),
-                Test((('cx', 'm'),), 1, 0x5510),
-                Test((('cx', 'm'),), 0, 0)
+                Test(('bx', 'r'), 1, 0x5517),
+                Test(('bx', 'r'), 0, 0),
+                Test(('cx', 'm'), 1, 0x5510),
+                Test(('cx', 'm'), 0, 0)
                 ):
 
             with self.subTest(test=test):
@@ -329,7 +328,7 @@ class CPUTest(unittest.TestCase):
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
                 sp = cpu.sp
-                cpu.op_push((test.src,))
+                cpu.op_push(test.src)
                 self.assertEqual(sp - 2, cpu.sp)
                 self.assertEqual(test.res, cpu._read_memory(cpu.sp))
 

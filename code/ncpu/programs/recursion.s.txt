@@ -18,7 +18,7 @@ recurse:
   add    sp,0x2  ; remove arg from stack
   mov    cx,ax
   mov    ax,[bp-0xc]
-  mul    ax,cx
+  mul    cx
   mov    [bp-0x4],ax
 done:
   mov    ax,[bp-0x4]
