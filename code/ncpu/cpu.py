@@ -25,14 +25,16 @@ def parse_operand(op, text_labels=None, data_labels=None):
         if offset:
             try:
                 val = int(offset, 16)
-                return Operand.from_optype(OpType.MEMORY, Register(op), val)
+                return MemoryOp(Register(op), val)
             except ValueError:
                 raise
-        return Operand.from_optype(OpType.MEMORY, Register(op))
+        return MemoryOp(Register(op))
     else:
         try:
             val = int(op, 16)
-            return Operand.from_optype(OpType.IMMEDIATE, val)
+            if val < 0:
+                raise ValueError('invalid immediate value')
+            return ImmediateOp(val)
         except ValueError:
             raise Exception('invalid operand "%s"' % op)
 
@@ -314,6 +316,12 @@ class CPU:
         else:
             self.flags &= ~Flag.ZF
 
+    def _twos_complement(self, val):
+        bits = 16
+        if (val & (1 << (bits - 1))) != 0:
+            val = val - (1 << bits)
+        return val & ((2 ** bits) - 1)
+
     def op_sub(self, dest, src):
         if src.optype == OpType.MEMORY and dest.optype == OpType.MEMORY:
             raise Exception('invalid source,dest pair (%s,%s)' % (dest, src))
@@ -324,12 +332,36 @@ class CPU:
         srcval = self._get_operand_value(src)
         res = destval - srcval
 
-        self._set_operand_value(dest, res)
+        if res < 0:
+            res = self._twos_complement(res)
+            self.flags |= Flag.CF
+        else:
+            self.flags &= ~Flag.CF
 
         if res == 0:
             self.flags |= Flag.ZF
         else:
             self.flags &= ~Flag.ZF
+
+        if res & 0x8000 == 0x8000:
+            self.flags |= Flag.SF
+        else:
+            self.flags &= ~Flag.SF
+
+        if (
+                srcval & 0x8000 == 0x8000
+                and destval & 0x8000 == 0
+                and res & 0x8000 == 0x8000):
+            self.flags |= Flag.OF
+        elif (
+                srcval & 0x8000 == 0
+                and destval & 0x8000 == 0x8000
+                and res & 0x8000 == 0):
+            self.flags |= Flag.OF
+        else:
+            self.flags &= ~Flag.OF
+
+        self._set_operand_value(dest, res)
 
     def op_add(self, dest, src):
         if src.optype == OpType.MEMORY and dest.optype == OpType.MEMORY:
@@ -337,9 +369,42 @@ class CPU:
         if dest.optype == OpType.IMMEDIATE:
             raise Exception('invalid dest operand')
 
-        opval = self._get_operand_value(src)
-        val = self._get_operand_value(dest)
-        self._set_operand_value(dest, val + opval)
+        srcval = self._get_operand_value(src)
+        destval = self._get_operand_value(dest)
+        res = destval + srcval
+
+        if res > res & 0xffff:
+            res = res & 0xffff
+            self.flags |= Flag.CF
+        else:
+            self.flags &= ~Flag.CF
+
+        if res == 0:
+            self.flags |= Flag.ZF
+        else:
+            self.flags &= ~Flag.ZF
+
+        if res & 0x8000 == 0x8000:
+            import sys
+            print('res is', res, 'setting sf', file=sys.stderr)
+            self.flags |= Flag.SF
+        else:
+            self.flags &= ~Flag.SF
+
+        if (
+                srcval & 0x8000 == 0x8000
+                and destval & 0x8000 == 0x8000
+                and res & 0x8000 == 0):
+            self.flags |= Flag.OF
+        elif (
+                srcval & 0x8000 == 0
+                and destval & 0x8000 == 0
+                and res & 0x8000 == 0x8000):
+            self.flags |= Flag.OF
+        else:
+            self.flags &= ~Flag.OF
+
+        self._set_operand_value(dest, res)
 
     def op_mul(self, operand):
         if operand.optype not in (OpType.REGISTER, OpType.MEMORY):

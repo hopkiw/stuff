@@ -241,7 +241,84 @@ class CPUTest(unittest.TestCase):
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
                 cpu.op_sub(test.dest, test.src)
-                self.assertEqual(test.res, cpu.registers[test.dest.value.value])
+                self.assertEqual(test.res,
+                                 cpu.registers[test.dest.value.value])
+
+    def test_flags(self):
+        class Test:
+            def __init__(self, arg1, arg2, res, of, sf, zf, cf):
+                self.arg1 = arg1
+                self.arg2 = arg2
+                self.res = res
+                self.of = of
+                self.sf = sf
+                self.zf = zf
+                self.cf = cf
+
+            def __repr__(self):
+                res = {}
+                for i in self.__dict__:
+                    val = self.__dict__[i]
+                    if isinstance(val, int) and not isinstance(val, bool):
+                        res[i] = hex(val)
+                    else:
+                        res[i] = val
+                return str(res)
+
+            def checkflags(self, test, flags):
+                if self.of:
+                    test.assertIn(Flag.OF, flags)
+                else:
+                    test.assertNotIn(Flag.OF, flags)
+
+                if self.sf:
+                    test.assertIn(Flag.SF, flags)
+                else:
+                    test.assertNotIn(Flag.SF, flags)
+
+                if self.zf:
+                    test.assertIn(Flag.ZF, flags)
+                else:
+                    test.assertNotIn(Flag.ZF, flags)
+
+                if self.cf:
+                    test.assertIn(Flag.CF, flags)
+                else:
+                    test.assertNotIn(Flag.CF, flags)
+
+        for test in (
+                #    arg1     arg2     result   OF      SF      ZF      CF
+                Test(0x7f00,  0,       0x7f00,  False,  False,  False,  False),
+                Test(0xffff,  0x7f,    0x7e,    False,  False,  False,  True),
+                Test(0,       0,       0,       False,  False,  True,   False),
+                Test(0xffff,  0x1,     0,       False,  False,  True,   True),
+                Test(0xffff,  0,       0xffff,  False,  True,   False,  False),
+                Test(0xffff,  0xffff,  0xfffe,  False,  True,   False,  True),
+                Test(0xffff,  0x8000,  0x7fff,  True,   False,  False,  True),
+                Test(0x8000,  0x8000,  0,       True,   False,  True,   True),
+                Test(0x7fff,  0x7fff,  0xfffe,  True,   True,   False,  False)
+                ):
+            with self.subTest(test=test):
+                cpu = CPU([], state=State({'ax': test.arg1}))
+                cpu.op_add(RegisterOp(Register.AX), ImmediateOp(test.arg2))
+                self.assertEqual(test.res, cpu.registers[Register.AX.value])
+                test.checkflags(self, cpu.flags)
+
+        for test in (
+                #    arg1     arg2     result   OF      SF      ZF      CF
+                Test(0xffff,  0xfffe,  1,       False,  False,  False,  False),
+                Test(0x7ffe,  0xffff,  0x7fff,  False,  False,  False,  True),
+                Test(0xffff,  0xffff,  0,       False,  False,  True,   False),
+                Test(0xffff,  0x7fff,  0x8000,  False,  True,   False,  False),
+                Test(0xfffe,  0xffff,  0xffff,  False,  True,   False,  True),
+                Test(0xfffe,  0x7fff,  0x7fff,  True,   False,  False,  False),
+                Test(0x7fff,  0xffff,  0x8000,  True,   True,   False,  True),
+                ):
+            with self.subTest(test=test):
+                cpu = CPU([], state=State({'ax': test.arg1}))
+                cpu.op_sub(RegisterOp(Register.AX), ImmediateOp(test.arg2))
+                self.assertEqual(test.res, cpu.registers[Register.AX.value])
+                test.checkflags(self, cpu.flags)
 
     def test_op_cmp(self):
         state = State(registers={'ax': 0x2, 'bx': 0x1234, 'cx': 0x4},
@@ -317,15 +394,15 @@ class CPUTest(unittest.TestCase):
                 return str(self.__dict__)
 
         for test in (
-                Test(RegisterOp(Register.BX), 0, 0x5517),
-                Test(RegisterOp(Register.BX), 1, 0),
-                Test(MemoryOp(Register.CX), 0, 0x5510),
-                Test(MemoryOp(Register.CX), 1, 0)
+                Test(RegisterOp(Register.BX), False, 0x5517),
+                Test(RegisterOp(Register.BX), True, 0),
+                Test(MemoryOp(Register.CX), False, 0x5510),
+                Test(MemoryOp(Register.CX), True, 0)
                 ):
 
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
-                if not test.zf:
+                if test.zf:
                     cpu.flags |= Flag.ZF
                 cpu.op_jne(test.dest)
                 self.assertEqual(test.ip, cpu.ip)
@@ -344,15 +421,15 @@ class CPUTest(unittest.TestCase):
                 return str(self.__dict__)
 
         for test in (
-                Test(RegisterOp(Register.BX), 1, 0x5517),
-                Test(RegisterOp(Register.BX), 0, 0),
-                Test(MemoryOp(Register.CX), 1, 0x5510),
-                Test(MemoryOp(Register.CX), 0, 0)
+                Test(RegisterOp(Register.BX), True, 0x5517),
+                Test(RegisterOp(Register.BX), False, 0),
+                Test(MemoryOp(Register.CX), True, 0x5510),
+                Test(MemoryOp(Register.CX), False, 0)
                 ):
 
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
-                if not test.zf:
+                if test.zf:
                     cpu.flags |= Flag.ZF
                 cpu.op_je(test.dest)
                 self.assertEqual(test.ip, cpu.ip)
