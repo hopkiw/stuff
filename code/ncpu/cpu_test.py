@@ -2,7 +2,7 @@
 
 import unittest
 
-from cpu import CPU, STACK, State, DATA, Memory
+from cpu import CPU, STACK, State, DATA, Memory, Flag
 from cpu import Operand, RegisterOp, MemoryOp, ImmediateOp, OpType, Register
 
 
@@ -143,8 +143,12 @@ class CPUTest(unittest.TestCase):
                 cpu.op_mul(test.multiplier)
                 self.assertEqual(test.ax, cpu.registers['ax'])
                 self.assertEqual(test.dx, cpu.registers['dx'])
-                self.assertEqual(test.cf, cpu.flags['cf'])
-                self.assertEqual(test.of, cpu.flags['of'])
+                if test.cf:
+                    self.assertIn(Flag.CF, cpu.flags)
+                    self.assertIn(Flag.OF, cpu.flags)
+                else:
+                    self.assertNotIn(Flag.CF, cpu.flags)
+                    self.assertNotIn(Flag.OF, cpu.flags)
 
         with self.assertRaises(Exception):
             cpu = CPU([])
@@ -176,8 +180,15 @@ class CPUTest(unittest.TestCase):
                 cpu.op_div(test.divisor)
                 self.assertEqual(test.ax, cpu.registers['ax'])
                 self.assertEqual(test.dx, cpu.registers['dx'])
-                self.assertEqual(test.cf, cpu.flags['cf'])
-                self.assertEqual(test.of, cpu.flags['of'])
+                if test.cf:
+                    self.assertIn(Flag.CF, cpu.flags)
+                else:
+                    self.assertNotIn(Flag.CF, cpu.flags)
+
+                if test.of:
+                    self.assertIn(Flag.OF, cpu.flags)
+                else:
+                    self.assertNotIn(Flag.OF, cpu.flags)
 
         with self.assertRaises(Exception):
             cpu = CPU([])
@@ -257,7 +268,10 @@ class CPUTest(unittest.TestCase):
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
                 cpu.op_cmp(test.dest, test.src)
-                self.assertEqual(test.res, cpu.flags['zf'])
+                if test.res:
+                    self.assertIn(Flag.ZF, cpu.flags)
+                else:
+                    self.assertNotIn(Flag.ZF, cpu.flags)
 
         with self.assertRaises(Exception):
             cpu = CPU([], state=state.copy())
@@ -311,7 +325,8 @@ class CPUTest(unittest.TestCase):
 
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
-                cpu.flags['zf'] = test.zf
+                if not test.zf:
+                    cpu.flags |= Flag.ZF
                 cpu.op_jne(test.dest)
                 self.assertEqual(test.ip, cpu.ip)
 
@@ -337,7 +352,8 @@ class CPUTest(unittest.TestCase):
 
             with self.subTest(test=test):
                 cpu = CPU([], state=state.copy())
-                cpu.flags['zf'] = test.zf
+                if not test.zf:
+                    cpu.flags |= Flag.ZF
                 cpu.op_je(test.dest)
                 self.assertEqual(test.ip, cpu.ip)
 

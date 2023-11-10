@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from collections.abc import MutableMapping
-from enum import Enum
+from enum import auto, Enum, Flag
 
 
 STACK = 0x7f00
@@ -51,11 +51,11 @@ def parse_operands(operands, text_labels=None, data_labels=None):
 
 
 class OpType(Enum):
-    MEMORY = 'm'
-    IMMEDIATE = 'i'
-    REGISTER = 'r'
-    DATAL = 'dl'
-    TEXTL = 'tl'
+    MEMORY = auto()
+    IMMEDIATE = auto()
+    REGISTER = auto()
+    DATAL = auto()
+    TEXTL = auto()
 
 
 class Register(Enum):
@@ -68,6 +68,14 @@ class Register(Enum):
     BP = 'bp'
     SP = 'sp'
     IP = 'ip'
+
+
+class Flag(Flag):
+    CF = auto()
+    PF = auto()
+    ZF = auto()
+    SF = auto()
+    OF = auto()
 
 
 class Operand:
@@ -92,6 +100,8 @@ class Operand:
             return MemoryOp(*args, **kwargs)
         elif optype == OpType.IMMEDIATE:
             return ImmediateOp(*args, **kwargs)
+        else:
+            return Operand(optype, *args, **kwargs)
 
 
 class RegisterOp(Operand):
@@ -143,9 +153,9 @@ class State:
         if registers:
             self.registers.update(registers)
 
-        self.flags = {'zf': 0, 'cf': 0, 'of': 0}
+        self.flags = Flag(0)
         if flags:
-            self.flags.update(flags)
+            self.flags |= flags
 
         if memory:
             self.memory = memory
@@ -283,11 +293,11 @@ class CPU:
         self.registers['ip'] = addr
 
     def op_jne(self, operand):
-        if self.flags['zf'] == 0:
+        if Flag.ZF not in self.flags:
             self.op_jmp(operand)
 
     def op_je(self, operand):
-        if self.flags['zf'] == 1:
+        if Flag.ZF in self.flags:
             self.op_jmp(operand)
 
     def op_cmp(self, dest, src):
@@ -300,9 +310,9 @@ class CPU:
         destval = self._get_operand_value(dest)
 
         if destval - srcval == 0:
-            self.states[-1].flags['zf'] = 1
+            self.flags |= Flag.ZF
         else:
-            self.states[-1].flags['zf'] = 0
+            self.flags &= ~Flag.ZF
 
     def op_sub(self, dest, src):
         if src.optype == OpType.MEMORY and dest.optype == OpType.MEMORY:
@@ -317,9 +327,9 @@ class CPU:
         self._set_operand_value(dest, res)
 
         if res == 0:
-            self.flags['zf'] = 1
+            self.flags |= Flag.ZF
         else:
-            self.flags['zf'] = 0
+            self.flags &= ~Flag.ZF
 
     def op_add(self, dest, src):
         if src.optype == OpType.MEMORY and dest.optype == OpType.MEMORY:
@@ -341,11 +351,11 @@ class CPU:
         self.registers['ax'] = product & 0xffff  # low byte
 
         if self.registers['dx'] == 0:
-            self.flags['cf'] = 0
-            self.flags['of'] = 0
+            self.flags &= ~Flag.CF
+            self.flags &= ~Flag.OF
         else:
-            self.flags['cf'] = 1
-            self.flags['of'] = 1
+            self.flags |= Flag.CF
+            self.flags |= Flag.OF
 
     def op_div(self, operand):
         if operand.optype not in (OpType.REGISTER, OpType.MEMORY):
@@ -391,7 +401,7 @@ class CPU:
         return
 
     def execute(self):
-        self.states.append(State(self.registers.copy(), self.flags.copy(),
+        self.states.append(State(self.registers.copy(), self.flags,
                                  self.memory.copy()))
 
         ip = self.ip
@@ -411,6 +421,10 @@ class CPU:
     @property
     def flags(self):
         return self.states[-1].flags
+
+    @flags.setter
+    def flags(self, value):
+        self.states[-1].flags = value
 
     @property
     def memory(self):

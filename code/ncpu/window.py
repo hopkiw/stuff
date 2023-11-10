@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from cpu import DATA, STACK, TEXT
+from cpu import DATA, STACK, TEXT, Flag
 
 import curses
 import curses.panel
@@ -109,8 +109,15 @@ class RegisterWindow(Window):
             registers.append([(COLOR_BLUE, f'{reg}'),
                               (COLOR_NORMAL, f' {cpu.registers[reg]:#06x}')])
 
-        for m, flag in enumerate(cpu.flags):
-            registers.append([(COLOR_NORMAL, f'{flag}: {cpu.flags[flag]}')])
+        flagline = f'flags {cpu.flags.value:#x}'
+        for flag in Flag:
+            if flag in cpu.flags:
+                name = flag.name
+            else:
+                name = '  '
+            flagline = f'{flagline} {name}'
+
+        registers.append([(COLOR_NORMAL, flagline)])
 
         self.setitems(registers)
 
