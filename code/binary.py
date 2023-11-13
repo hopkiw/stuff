@@ -33,6 +33,8 @@ def _exec(op, op1, op2):
         res = int(op1 / op2)
     elif op in ('add', '+'):
         res = op1 + op2
+    elif op in ('sub', '-'):
+        res = op1 - op2
     else:
         raise Exception('Unsupported operator "%s"' % op)
 
