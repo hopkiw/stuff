@@ -2,14 +2,13 @@
 
 import curses
 from curses.textpad import Textbox
+import math
 import sys
 
 
 class GrubLineEditor(Textbox):
-    def __init__(self, screen, startx, starty, line=""):
-        screen.addstr(startx, starty, "> ")
-        screen.noutrefresh()
-        win = curses.newwin(1, 74, startx, starty + 2)
+    def __init__(self, starty, startx, line=""):
+        win = curses.newwin(1, 74, starty, startx)
         curses.textpad.Textbox.__init__(self, win)
 
         self.line = list(line)
@@ -18,9 +17,6 @@ class GrubLineEditor(Textbox):
         self.show_text()
 
     def show_text(self):
-        """Show the text.  One of our advantages over standard textboxes
-        is that we can handle lines longer than the window."""
-
         self.win.erase()
         p = self.pos
         off = 0
@@ -91,63 +87,123 @@ def main(stdscr):
 
     textwin = curses.newwin(20, 25, 2, 2)
     textwin.box()
-    # textwin.hline(max_y - 4, 0, 0, max_x)
-    textwin.addstr(1, 2, 'hi', curses.color_pair(1))
     textwin.noutrefresh()
+    editwin = curses.newwin(3, max_x - 1, 24, 0)
+    editwin.noutrefresh()
 
     stack = []
     while True:
-        for n, line in enumerate(stack):
-            print('line is', str(line), file=sys.stderr)
-            textwin.addstr(2 + n, 2, str(line), curses.color_pair(1))
+        textwin.erase()
+        stack_copy = stack.copy()
+        for n in range(15):
+            if n >= len(stack):
+                line = ''
+            else:
+                line = stack_copy.pop()
+            line = f'{n:02}: {line}'
+            textwin.addstr(2 + n, 2, line, curses.color_pair(1))
+        textwin.noutrefresh()
+        textwin.box()
+
         curses.doupdate()
+
         res = textwin.getch()
-        if res == ord('q'):
-            break
-        elif res == 10:
-            t = GrubLineEditor(stdscr, max_y-3, 2)
+        if res == 10:
+            editwin.addstr(1, 1, '> ')
+            editwin.noutrefresh()
+            t = GrubLineEditor(25, 3)
             curses.curs_set(1)
             res = t.edit()
             curses.curs_set(0)
-            print('got edit', str(res), file=sys.stderr)
-            if res == 'add':
-                arg1 = stack.pop()
-                arg2 = stack.pop()
-                stack.append(arg1 + arg2)
+            editwin.erase()
+            editwin.noutrefresh()
+            if not res:
+                continue
+            elif res == 'add':
+                try:
+                    arg1 = stack.pop()
+                    arg2 = stack.pop()
+                except IndexError:
+                    raise Exception('stack empty')
+                stack.append(arg2 + arg1)
             elif res == 'sub':
-                pass
+                try:
+                    arg1 = stack.pop()
+                    arg2 = stack.pop()
+                except IndexError:
+                    raise Exception('stack empty')
+                stack.append(arg2 - arg1)
             elif res == 'mul':
-                pass
+                try:
+                    arg1 = stack.pop()
+                    arg2 = stack.pop()
+                except IndexError:
+                    raise Exception('stack empty')
+                stack.append(arg2 * arg1)
             elif res == 'div':
-                pass
+                try:
+                    arg1 = stack.pop()
+                    arg2 = stack.pop()
+                except IndexError:
+                    raise Exception('stack empty')
+                stack.append(arg2 / arg1)
             elif res == 'pow':
-                pass
+                try:
+                    arg1 = stack.pop()
+                    arg2 = stack.pop()
+                except IndexError:
+                    raise Exception('stack empty')
+                stack.append(arg2 ** arg1)
             elif res == 'mod':
-                pass
+                try:
+                    arg1 = stack.pop()
+                    arg2 = stack.pop()
+                except IndexError:
+                    raise Exception('stack empty')
+                stack.append(arg2 % arg1)
             elif res == 'sqrt':
-                pass
+                try:
+                    arg1 = stack.pop()
+                except IndexError:
+                    raise Exception('stack empty')
+                stack.append(math.sqrt(arg1))
             elif res == 'clr':
-                pass
+                stack = list()
             elif res == 'dup':
-                pass
+                try:
+                    arg1 = stack.pop()
+                except IndexError:
+                    raise Exception('stack empty')
+                stack.append(arg1)
+                stack.append(arg1)
             elif res == 'swap':
-                pass
-            elif res == 'rot':
-                pass
+                try:
+                    arg1 = stack.pop()
+                    arg2 = stack.pop()
+                except IndexError:
+                    raise Exception('stack empty')
+                stack.append(arg1)
+                stack.append(arg2)
+            elif res == 'quit':
+                break
             else:
                 try:
                     res = int(res, 0)
+                    stack.append(res)
                 except ValueError:
                     pass
 
-                stack.append(res)
+                print('stack is now', stack, file=sys.stderr)
 
         else:
             print('unk key', res, file=sys.stderr)
 
 
 if __name__ == '__main__':
-    curses.wrapper(main)
+    try:
+        curses.wrapper(main)
+    except Exception as e:
+        print(e)
 
 # TODO:
 #   * need to decide on UI
