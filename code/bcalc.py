@@ -7,6 +7,7 @@ import sys
 
 BITS = 16
 MASK = (1 << BITS) - 1
+SIGNBIT = 1 << (BITS - 1)
 
 
 class bcolors:
@@ -29,30 +30,33 @@ def _exec(op, op1, op2):
         res = op1 | op2
     elif op in ('xor', '^'):
         res = op1 ^ op2
-    elif op in ('shl', '<<'):
+    elif op in ('sal', 'shl', '<<'):
         res = (op1 << op2) & MASK
     elif op in ('shr', '>>'):
         res = op1 >> op2
-    elif op in ('sar'):
+    elif op == 'sar':
         res = op1 >> op2
-        mask = ((1 << op2) - 1) << (BITS - op2)
-        res = res | mask
+        if op1 & SIGNBIT == SIGNBIT:
+            mask = ((1 << op2) - 1) << (BITS - op2)
+            res = res | mask
     elif op in ('mul', '*'):
         res = op1 * op2
         if res & MASK != res:
-            print('\noverflow!')
+            print('result overflow')
         res = res & MASK
     elif op in ('div', '/'):
         res = (int(op1 / op2), op1 % op2)
     elif op in ('add', '+'):
         res = op1 + op2
         if res & MASK != res:
-            print('\noverflow!')
+            print('result overflow')
         res = res & MASK
     elif op in ('sub', '-'):
         res = (op1 - op2) & MASK
     elif op in ('not', '!'):
         res = MASK - op1
+    elif op == 'print':
+        res = op1
     else:
         raise Exception('Unsupported operator "%s"' % op)
 
@@ -74,15 +78,20 @@ def _red(val):
 def _print(op, op1, op2, res, res2=None):
     def _printop(val, op=''):
         footer = ''
-        if val & 0x8000 == 0x8000:
-            footer = f'(2\'s complement: {-1 * (MASK - val + 1)})'
+        if val & SIGNBIT == SIGNBIT:
+            footer = f'(2c: {-1 * (MASK - val + 1)})'
         print(f'{op:<3}', _blue(f'{val:#018b}'), _green(f'{val:#06x}'), val,
               footer)
 
     print('\n')
 
+    if op == 'print':
+        _printop(op1)
+        print('\n')
+        return
+
     _printop(op1)
-    if op2:
+    if op2 is not None:
         _printop(op2, op)
 
     print('    -------------------------')
@@ -103,7 +112,7 @@ BINARY_OPS = ('+', 'add',
               '%', 'mod',
               '&', 'and',
               '|', 'or',
-              '<<', 'shl',
+              '<<', 'shl', 'sal',
               '>>', 'shr',
               'sar',
               '^', 'xor')
@@ -112,18 +121,27 @@ BINARY_OPS = ('+', 'add',
 def _parse(text):
     op2 = None
     ops = text.split()
-    try:
+    if len(ops) == 1:
+        op = 'print'
+        op1 = ops[0]
+    elif len(ops) == 2:
         op, op1 = ops
         if op not in UNARY_OPS:
             raise Exception('unknown operation')
-    except ValueError:
+    elif len(ops) == 3:
         op1, op, op2 = ops
         if op not in BINARY_OPS:
             raise Exception('unknown operation')
 
-    op1 = int(op1, 0) & MASK
+    op1 = int(op1, 0)
+    if op1 & MASK != op1:
+        print('operand 1 overflow')
+    op1 = op1 & MASK
     if op2 is not None:
-        op2 = int(op2, 0) & MASK
+        op2 = int(op2, 0)
+        if op2 & MASK != op2:
+            print('operand 2 overflow')
+        op2 = op2 & MASK
 
     return op, op1, op2
 
