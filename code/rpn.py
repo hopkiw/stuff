@@ -91,7 +91,6 @@ def main(stdscr):
     editwin = curses.newwin(3, max_x - 1, 24, 0)
     editwin.noutrefresh()
 
-    stack = []
     while True:
         textwin.erase()
         stack_copy = stack.copy()
@@ -117,106 +116,91 @@ def main(stdscr):
             curses.curs_set(0)
             editwin.erase()
             editwin.noutrefresh()
-            if not res:
-                continue
-            elif res == 'add':
+            if res:
                 try:
-                    arg1 = stack.pop()
-                    arg2 = stack.pop()
+                    _exec(res)
                 except IndexError:
                     raise Exception('stack empty')
-                res = arg2 + arg1
-                if int(res) == res:
-                    res = int(res)
-                stack.append(res)
-            elif res == 'sub':
-                try:
-                    arg1 = stack.pop()
-                    arg2 = stack.pop()
-                except IndexError:
-                    raise Exception('stack empty')
-                res = arg2 - arg1
-                if int(res) == res:
-                    res = int(res)
-                stack.append(res)
-            elif res == 'mul':
-                try:
-                    arg1 = stack.pop()
-                    arg2 = stack.pop()
-                except IndexError:
-                    raise Exception('stack empty')
-                res = arg2 * arg1
-                if int(res) == res:
-                    res = int(res)
-                stack.append(res)
-            elif res == 'div':
-                try:
-                    arg1 = stack.pop()
-                    arg2 = stack.pop()
-                except IndexError:
-                    raise Exception('stack empty')
-                res = arg2 / arg1
-                if int(res) == res:
-                    res = int(res)
-                stack.append(res)
-            elif res == 'pow':
-                try:
-                    arg1 = stack.pop()
-                    arg2 = stack.pop()
-                except IndexError:
-                    raise Exception('stack empty')
-                res = arg2 ** arg1
-                if int(res) == res:
-                    res = int(res)
-                stack.append(res)
-            elif res == 'mod':
-                try:
-                    arg1 = stack.pop()
-                    arg2 = stack.pop()
-                except IndexError:
-                    raise Exception('stack empty')
-                res = arg2 % arg1
-                if int(res) == res:
-                    res = int(res)
-                stack.append(res)
-            elif res == 'sqrt':
-                try:
-                    arg1 = stack.pop()
-                except IndexError:
-                    raise Exception('stack empty')
-                stack.append(math.sqrt(arg1))
-            elif res == 'clr':
-                stack = list()
-            elif res == 'dup':
-                try:
-                    arg1 = stack.pop()
-                except IndexError:
-                    raise Exception('stack empty')
-                stack.append(arg1)
-                stack.append(arg1)
-            elif res == 'swap':
-                try:
-                    arg1 = stack.pop()
-                    arg2 = stack.pop()
-                except IndexError:
-                    raise Exception('stack empty')
-                stack.append(arg1)
-                stack.append(arg2)
-            elif res == 'quit':
-                break
-            else:
-                try:
-                    res = float(res)
-                    if res == int(res):
-                        res = int(res)
-                    stack.append(res)
-                except ValueError:
-                    pass
-
-                print('stack is now', stack, file=sys.stderr)
 
         else:
             print('unk key', res, file=sys.stderr)
+
+
+stack = []
+
+
+def _exec(res):
+    if res == 'add':
+        arg1 = stack.pop()
+        arg2 = stack.pop()
+        res = arg2 + arg1
+        if int(res) == res:
+            res = int(res)
+        stack.append(res)
+    elif res == 'sub':
+        arg1 = stack.pop()
+        arg2 = stack.pop()
+        res = arg2 - arg1
+        if int(res) == res:
+            res = int(res)
+        stack.append(res)
+    elif res == 'mul':
+        arg1 = stack.pop()
+        arg2 = stack.pop()
+        res = arg2 * arg1
+        if int(res) == res:
+            res = int(res)
+        stack.append(res)
+    elif res == 'div':
+        arg1 = stack.pop()
+        arg2 = stack.pop()
+        res = arg2 / arg1
+        if int(res) == res:
+            res = int(res)
+        stack.append(res)
+    elif res == 'pow':
+        arg1 = stack.pop()
+        arg2 = stack.pop()
+        res = arg2 ** arg1
+        if int(res) == res:
+            res = int(res)
+        stack.append(res)
+    elif res == 'mod':
+        arg1 = stack.pop()
+        arg2 = stack.pop()
+        res = arg2 % arg1
+        if int(res) == res:
+            res = int(res)
+        stack.append(res)
+    elif res == 'sqrt':
+        arg1 = stack.pop()
+        stack.append(math.sqrt(arg1))
+    elif res == 'shr':
+        arg1 = stack.pop()
+        arg2 = stack.pop()
+        return arg1 >> arg2
+    elif res == 'clr':
+        stack.clear()
+    elif res == 'dup':
+        arg1 = stack.pop()
+        stack.append(arg1)
+        stack.append(arg1)
+    elif res == 'swap':
+        arg1 = stack.pop()
+        arg2 = stack.pop()
+        stack.append(arg1)
+        stack.append(arg2)
+    elif res == 'quit':
+        return 'quit'
+    else:
+        try:
+            res = float(res)
+            if res.is_integer():
+                res = int(res)
+            stack.append(res)
+        except ValueError:
+            res = int(res, 0)
+            stack.append(res)
 
 
 if __name__ == '__main__':
@@ -224,29 +208,3 @@ if __name__ == '__main__':
         curses.wrapper(main)
     except Exception as e:
         print(e)
-
-# TODO:
-#   * need to decide on UI
-#   * animating/state changes
-#
-#   UI:
-#
-#   3
-#   32
-#   181
-#   0
-#   2
-#
-#   text entry area: always present, or popping up as needed?
-#   default view is...?
-#
-#   accomplish complicated ((2 + 1) * (13 - ( 4 / 2))) + 12
-#   via correct stack ordering
-#
-#   dup, add, sub, mul, pow, etc.
-#   if op in ops:
-#     opfunc(op)
-#   elif isint(op):
-#     push(int(op))
-#   else:
-#     push(str(op))
