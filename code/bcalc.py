@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 """Visualize binary bitwise operations"""
 
-import rlcompleter
+import rlcompleter  # noqa: F401
 import readline
 import sys
 
-# TODO
-# quit command
-# sar, sign extension, 2s complement
-# unary operators
-# auto-detecting when to interpret result as 2s complement
-# printing when twos complement has happened
-
 BITS = 16
+MASK = (1 << BITS) - 1
 
 
 class bcolors:
@@ -36,25 +30,29 @@ def _exec(op, op1, op2):
     elif op in ('xor', '^'):
         res = op1 ^ op2
     elif op in ('shl', '<<'):
-        res = (op1 << op2) & 0xffff
+        res = (op1 << op2) & MASK
     elif op in ('shr', '>>'):
         res = op1 >> op2
+    elif op in ('sar'):
+        res = op1 >> op2
+        mask = ((1 << op2) - 1) << (BITS - op2)
+        res = res | mask
     elif op in ('mul', '*'):
         res = op1 * op2
-        if res & 0xffff != res:
+        if res & MASK != res:
             print('\noverflow!')
-        res = res & 0xffff
+        res = res & MASK
     elif op in ('div', '/'):
         res = (int(op1 / op2), op1 % op2)
     elif op in ('add', '+'):
         res = op1 + op2
-        if res & 0xffff != res:
+        if res & MASK != res:
             print('\noverflow!')
-        res = res & 0xffff
+        res = res & MASK
     elif op in ('sub', '-'):
-        res = (op1 - op2) & 0xffff
+        res = (op1 - op2) & MASK
     elif op in ('not', '!'):
-        res = 0xffff - op1
+        res = MASK - op1
     else:
         raise Exception('Unsupported operator "%s"' % op)
 
@@ -77,7 +75,7 @@ def _print(op, op1, op2, res, res2=None):
     def _printop(val, op=''):
         footer = ''
         if val & 0x8000 == 0x8000:
-            footer = f'(2\'s complement: {-1 * (0xffff - val + 1)})'
+            footer = f'(2\'s complement: {-1 * (MASK - val + 1)})'
         print(f'{op:<3}', _blue(f'{val:#018b}'), _green(f'{val:#06x}'), val,
               footer)
 
@@ -107,6 +105,7 @@ BINARY_OPS = ('+', 'add',
               '|', 'or',
               '<<', 'shl',
               '>>', 'shr',
+              'sar',
               '^', 'xor')
 
 
@@ -122,9 +121,9 @@ def _parse(text):
         if op not in BINARY_OPS:
             raise Exception('unknown operation')
 
-    op1 = int(op1, 0) & 0xffff
+    op1 = int(op1, 0) & MASK
     if op2 is not None:
-        op2 = int(op2, 0) & 0xffff
+        op2 = int(op2, 0) & MASK
 
     return op, op1, op2
 
