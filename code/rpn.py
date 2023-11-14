@@ -125,42 +125,60 @@ def main(stdscr):
                     arg2 = stack.pop()
                 except IndexError:
                     raise Exception('stack empty')
-                stack.append(arg2 + arg1)
+                res = arg2 + arg1
+                if int(res) == res:
+                    res = int(res)
+                stack.append(res)
             elif res == 'sub':
                 try:
                     arg1 = stack.pop()
                     arg2 = stack.pop()
                 except IndexError:
                     raise Exception('stack empty')
-                stack.append(arg2 - arg1)
+                res = arg2 - arg1
+                if int(res) == res:
+                    res = int(res)
+                stack.append(res)
             elif res == 'mul':
                 try:
                     arg1 = stack.pop()
                     arg2 = stack.pop()
                 except IndexError:
                     raise Exception('stack empty')
-                stack.append(arg2 * arg1)
+                res = arg2 * arg1
+                if int(res) == res:
+                    res = int(res)
+                stack.append(res)
             elif res == 'div':
                 try:
                     arg1 = stack.pop()
                     arg2 = stack.pop()
                 except IndexError:
                     raise Exception('stack empty')
-                stack.append(arg2 / arg1)
+                res = arg2 / arg1
+                if int(res) == res:
+                    res = int(res)
+                stack.append(res)
             elif res == 'pow':
                 try:
                     arg1 = stack.pop()
                     arg2 = stack.pop()
                 except IndexError:
                     raise Exception('stack empty')
-                stack.append(arg2 ** arg1)
+                res = arg2 ** arg1
+                if int(res) == res:
+                    res = int(res)
+                stack.append(res)
             elif res == 'mod':
                 try:
                     arg1 = stack.pop()
                     arg2 = stack.pop()
                 except IndexError:
                     raise Exception('stack empty')
-                stack.append(arg2 % arg1)
+                res = arg2 % arg1
+                if int(res) == res:
+                    res = int(res)
+                stack.append(res)
             elif res == 'sqrt':
                 try:
                     arg1 = stack.pop()
@@ -188,7 +206,9 @@ def main(stdscr):
                 break
             else:
                 try:
-                    res = int(res, 0)
+                    res = float(res)
+                    if res == int(res):
+                        res = int(res)
                     stack.append(res)
                 except ValueError:
                     pass
