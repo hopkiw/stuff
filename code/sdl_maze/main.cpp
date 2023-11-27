@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <algorithm>
 #include <vector>
 
 using namespace std;
@@ -150,7 +151,7 @@ int main(int argc, char* args[]) {
   std::vector<Tile> tiles;
 
   string map[40];
-  std::ifstream myfile("final.txt");
+  std::ifstream myfile("test.txt");
   if (myfile.is_open()) {
     int idx = 0;
     while (myfile.good()) {
@@ -165,11 +166,42 @@ int main(int argc, char* args[]) {
   vector<string> mapv(begin(map), end(map));
   vector<int> realmap = parse_map(mapv);
 
-  Camera camera = {0, 0, 1};
-  // int width = realmap[0].size();
-  // int idx = rand() % realmap;
-  // realmap[idx][idx] = 1;
-  bool maze;
+  std::vector<int> maze;  // aka 'visited'
+  std::vector<int> walls;
+
+  Camera camera = {0, 0, 24};
+  int idx = rand() % realmap.size();
+
+  maze.push_back(idx);
+  SDL_Log("first cell %d", idx);
+
+  if (idx > 1 && idx % WIDTH != 0) {
+    walls.push_back(idx - 1);  // left
+  }
+
+  if (idx < realmap.size() && ((idx + 1) % WIDTH != 0)) {
+    walls.push_back(idx + 1);  // right
+  }
+
+  if (idx > WIDTH) {
+    walls.push_back(idx - WIDTH);  // up
+  }
+
+  if (idx + WIDTH < realmap.size()) {
+    walls.push_back(idx + WIDTH);  // down
+  }
+
+  for (int i = 0; i < maze.size(); i++) {
+    realmap[maze[i]] = 1;
+  }
+
+  /*
+  for (int i = 0; i < walls.size(); i++) {
+    realmap[walls[i]] = 2;
+  }
+  */
+
+  bool next;
   while (!quit) {
     while (SDL_PollEvent(&e) != 0) {
       switch (e.type) {
@@ -203,16 +235,17 @@ int main(int argc, char* args[]) {
               ++camera.x;
               break;
             case 'n':
-              maze = true;
+              next = true;
               break;
           }
-          SDL_Log("camera (%d,%d,%d)", camera.x, camera.y, camera.z);
+          // SDL_Log("camera (%d,%d,%d)", camera.x, camera.y, camera.z);
           break;
         case SDL_MOUSEBUTTONDOWN:
           if (e.button.button == SDL_BUTTON_LEFT) {
             int tilex = (e.button.x / camera.z) + camera.x;
             int tiley = (e.button.y / camera.z) + camera.y;
             int tileidx = (tiley * WIDTH) + (tilex % WIDTH);
+            SDL_Log("clicked %d (%d,%d)", tileidx, tilex, tiley);
             if (tileidx < realmap.size())
               realmap[tileidx] = !realmap[tileidx];
           }
@@ -220,9 +253,112 @@ int main(int argc, char* args[]) {
       }
     }
 
-    if (maze) {
-      //realmap manipulation;
+    if (next == true) {
+      next = false;
 
+      // pick random wall
+      idx = rand() % walls.size();
+      idx = walls[idx];
+      SDL_Log("next cell %d", idx);
+
+      int visited = 0;
+      int idxn = 0;
+      vector<int>::iterator it;
+
+      if (idx > 1 && idx % WIDTH != 0) {
+        it = find(maze.begin(), maze.end(), idx - 1);
+        if (it != maze.end()) {
+          idxn = idx + 1;
+          visited++;
+        }
+      }
+
+      if (idx < realmap.size() && ((idx + 1) % WIDTH != 0)) {
+        it = find(maze.begin(), maze.end(), idx + 1);
+        if (it != maze.end()) {
+          idxn = idx - 1;
+          visited++;
+        }
+      }
+
+      if (idx > WIDTH) {
+        it = find(maze.begin(), maze.end(), idx - WIDTH);
+        if (it != maze.end()) {
+          idxn = idx + WIDTH;
+          visited++;
+        }
+      }
+
+      if (idx + WIDTH < realmap.size()) {
+        it = find(maze.begin(), maze.end(), idx + WIDTH);
+        if (it != maze.end()) {
+          idxn = idx - WIDTH;
+          visited++;
+        }
+      }
+
+      SDL_Log("%d squares have been visited adjacent to idx %d, idxn %d",
+          visited, idx, idxn);
+
+      if (visited == 1) {
+        maze.push_back(idx);
+        maze.push_back(idxn);
+        cout << "maze: ";
+        for (int i = 0; i < maze.size(); i++) {
+          cout << maze[i] << " ";
+        }
+        cout << endl;
+
+        it = find(walls.begin(), walls.end(), idxn + 1);
+        if (it == walls.end()) {
+          it = find(maze.begin(), maze.end(), idxn + 1);
+          if (it == maze.end())
+            walls.push_back(idxn + 1);
+        }
+
+        it = find(walls.begin(), walls.end(), idxn - 1);
+        if (it == walls.end()) {
+          it = find(maze.begin(), maze.end(), idxn - 1);
+          if (it == maze.end())
+            walls.push_back(idxn - 1);
+        }
+
+        it = find(walls.begin(), walls.end(), idxn + WIDTH);
+        if (it == walls.end()) {
+          it = find(maze.begin(), maze.end(), idxn + WIDTH);
+          if (it == maze.end())
+            walls.push_back(idxn + WIDTH);
+        }
+
+        it = find(walls.begin(), walls.end(), idxn - WIDTH);
+        if (it == walls.end()) {
+          it = find(maze.begin(), maze.end(), idxn - WIDTH);
+          if (it == maze.end())
+            walls.push_back(idxn - WIDTH);
+        }
+
+        it = find(walls.begin(), walls.end(), idxn);
+        if (it != walls.end()) {
+          SDL_Log("erased idxn %d", idxn);
+          walls.erase(it);
+        }
+      }
+
+      it = find(walls.begin(), walls.end(), idx);
+      if (it != walls.end()) {
+        SDL_Log("erased idx %d", idx);
+        walls.erase(it);
+      }
+
+      for (int i = 0; i < maze.size(); i++) {
+        realmap[maze[i]] = 1;
+      }
+      cout << "walls: ";
+      for (int i = 0; i < walls.size(); i++) {
+        cout << walls[i] << " ";
+        // realmap[walls[i]] = 2;
+      }
+      cout << endl;
     }
 
     int x = 0;
@@ -233,8 +369,12 @@ int main(int argc, char* args[]) {
           x - (camera.z * camera.x),
           y - (camera.z * camera.y),
                camera.z);
-      if (realmap[i])
+      if (realmap[i] == 1) {
         t.color = {0xFF, 0xFF, 0xFF};
+      } else if (realmap[i] == 2) {
+        t.color = {0xEE, 0xD2, 0x02};
+      }
+
       tiles.push_back(t);
 
       x += camera.z;
