@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include <stdio.h>
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -9,6 +10,7 @@ using namespace std;
 
 const int SCREEN_WIDTH = 1000;
 const int SCREEN_HEIGHT = 480;
+const int WIDTH = 99;
 
 struct Color {
   int r, g, b;
@@ -91,42 +93,38 @@ void close() {
   SDL_Quit();
 }
 
-vector<vector<int>> parse_map(vector<string> lines) {
-  vector<vector<int>> res;
+vector<int> parse_map(vector<string> lines) {
+  vector<int> res;
   for (auto line : lines) {
-    vector<int> linev;
     for (int i = 0; i < line.length(); i++) {
       char chr = line[i];
       switch (chr) {
         case '1':
-          linev.push_back(1);
+          res.push_back(1);
           break;
         case '0':
-          linev.push_back(0);
+          res.push_back(0);
           break;
         default:
           SDL_Log("unknown character in map: \"%c\"", chr);
           break;
       }
     }
-    res.push_back(linev);
-    linev.clear();
   }
 
   return res;
 }
 
-void save(vector<vector<int>> map) {
+void save(vector<int> map) {
   ofstream myfile;
   myfile.open("example.txt");
-  for (auto line : map) {
-    for (auto tile : line) {
-      if (tile == 1) {
-        myfile << '1';
-      } else {
-        myfile << '0';
-      }
+  for (int i = 0; i < map.size(); i++) {
+    if (map[i] == 1) {
+      myfile << '1';
+    } else {
+      myfile << '0';
     }
+  if ((i+1) % WIDTH == 0)
     myfile << '\n';
   }
   myfile.close();
@@ -165,9 +163,13 @@ int main(int argc, char* args[]) {
   }
 
   vector<string> mapv(begin(map), end(map));
-  vector<vector<int>> realmap = parse_map(mapv);
+  vector<int> realmap = parse_map(mapv);
 
-  Camera camera = {0, 0, 14};
+  Camera camera = {0, 0, 1};
+  // int width = realmap[0].size();
+  // int idx = rand() % realmap;
+  // realmap[idx][idx] = 1;
+  bool maze;
   while (!quit) {
     while (SDL_PollEvent(&e) != 0) {
       switch (e.type) {
@@ -200,6 +202,9 @@ int main(int argc, char* args[]) {
             case 'l' :
               ++camera.x;
               break;
+            case 'n':
+              maze = true;
+              break;
           }
           SDL_Log("camera (%d,%d,%d)", camera.x, camera.y, camera.z);
           break;
@@ -207,31 +212,37 @@ int main(int argc, char* args[]) {
           if (e.button.button == SDL_BUTTON_LEFT) {
             int tilex = (e.button.x / camera.z) + camera.x;
             int tiley = (e.button.y / camera.z) + camera.y;
-            if (tiley < realmap.size() && tilex < realmap[0].size()) {
-              realmap[tiley][tilex] = !realmap[tiley][tilex];
-            }
+            int tileidx = (tiley * WIDTH) + (tilex % WIDTH);
+            if (tileidx < realmap.size())
+              realmap[tileidx] = !realmap[tileidx];
           }
           break;
       }
     }
 
+    if (maze) {
+      //realmap manipulation;
+
+    }
+
     int x = 0;
     int y = 0;
     tiles.clear();
-    for (auto line : realmap) {
-      for (auto i : line) {
-        Tile t(
-            x - (camera.z * camera.x),
-            y - (camera.z * camera.y),
-                 camera.z);
-        if (i)
-          t.color = {0xFF, 0xFF, 0xFF};
-        tiles.push_back(t);
+    for (int i = 0; i < realmap.size(); i++) {
+      Tile t(
+          x - (camera.z * camera.x),
+          y - (camera.z * camera.y),
+               camera.z);
+      if (realmap[i])
+        t.color = {0xFF, 0xFF, 0xFF};
+      tiles.push_back(t);
 
-        x += camera.z;
+      x += camera.z;
+
+      if ((i+1) % WIDTH == 0) {
+        x = 0;
+        y += camera.z;
       }
-      x = 0;
-      y += camera.z;
     }
     tiles.back().color = {0xFF, 0, 0};
 
@@ -251,7 +262,7 @@ int main(int argc, char* args[]) {
   return 0;
 }
 
-// TODO(Liam): zoomable map
+// TODO(Liam):
 //
 // generate maps in this form
-// visualize a* pathing algorithm
+// visualize A* pathing algorithm
