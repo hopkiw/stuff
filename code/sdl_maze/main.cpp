@@ -5,6 +5,7 @@
 #include <fstream>
 #include <string>
 #include <algorithm>
+#include <set>
 #include <vector>
 
 using namespace std;
@@ -31,6 +32,16 @@ class Tile {
     int mPosX, mPosY;
 };
 
+
+ostream& operator<<(ostream& os, const SDL_Rect& tile) {
+    return os << "{"
+              << "x: " << tile.x << ", "
+              << "y: " << tile.y << ", "
+              << "w: " << tile.w << ", "
+              << "h: " << tile.h 
+              << "}";
+}
+
 bool init();
 void close();
 
@@ -47,7 +58,11 @@ Tile::Tile(int x, int y, int w)
 
 void Tile::render() {
   SDL_SetRenderDrawColor(gRenderer, color.r, color.g, color.b, 0xFF);
-  SDL_RenderFillRect(gRenderer, &mTile);
+  cout << "render " << mTile << endl;
+  if (mTile.x == 1001 && mTile.y == 88)
+    SDL_Log("yep");
+  if (SDL_RenderFillRect(gRenderer, &mTile) != 0)
+    SDL_Log("WHOA");
 }
 
 bool init() {
@@ -71,8 +86,8 @@ bool init() {
     printf("Window could not be created! SDL Error: %s\n", SDL_GetError());
     success = false;
   } else {
-    gRenderer = SDL_CreateRenderer(gWindow, -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    gRenderer = SDL_CreateRenderer(gWindow, -1, SDL_RENDERER_ACCELERATED);
+        //SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (gRenderer == NULL) {
       printf("Renderer could not be created! SDL Error: %s\n",
           SDL_GetError());
@@ -166,42 +181,36 @@ int main(int argc, char* args[]) {
   vector<string> mapv(begin(map), end(map));
   vector<int> realmap = parse_map(mapv);
 
-  std::vector<int> maze;  // aka 'visited'
-  std::vector<int> walls;
+  set<int> maze;  // aka 'visited'
+  set<int> walls;
 
-  Camera camera = {0, 0, 24};
+  Camera camera = {0, 0, 11};
   int idx = rand() % realmap.size();
 
-  maze.push_back(idx);
+  maze.insert(idx);
   SDL_Log("first cell %d", idx);
 
   if (idx > 1 && idx % WIDTH != 0) {
-    walls.push_back(idx - 1);  // left
+    walls.insert(idx - 1);  // left
   }
 
   if (idx < realmap.size() && ((idx + 1) % WIDTH != 0)) {
-    walls.push_back(idx + 1);  // right
+    walls.insert(idx + 1);  // right
   }
 
   if (idx > WIDTH) {
-    walls.push_back(idx - WIDTH);  // up
+    walls.insert(idx - WIDTH);  // up
   }
 
   if (idx + WIDTH < realmap.size()) {
-    walls.push_back(idx + WIDTH);  // down
+    walls.insert(idx + WIDTH);  // down
   }
 
-  for (int i = 0; i < maze.size(); i++) {
-    realmap[maze[i]] = 1;
+  for (auto i : maze) {
+    realmap[i] = 1;
   }
 
-  /*
-  for (int i = 0; i < walls.size(); i++) {
-    realmap[walls[i]] = 2;
-  }
-  */
-
-  bool next;
+  bool next = true;
   while (!quit) {
     while (SDL_PollEvent(&e) != 0) {
       switch (e.type) {
@@ -254,44 +263,44 @@ int main(int argc, char* args[]) {
     }
 
     if (next == true) {
-      next = false;
+      //next = false;
 
       // pick random wall
       idx = rand() % walls.size();
-      idx = walls[idx];
+      int n = 0;
+      // naive: walk through walls until index
+      for (auto i : walls) {
+        if (n++ == idx)
+          idx = i;
+      }
       SDL_Log("next cell %d", idx);
 
       int visited = 0;
       int idxn = 0;
-      vector<int>::iterator it;
 
       if (idx > 1 && idx % WIDTH != 0) {
-        it = find(maze.begin(), maze.end(), idx - 1);
-        if (it != maze.end()) {
+        if (maze.count(idx - 1) == 1) {
           idxn = idx + 1;
           visited++;
         }
       }
 
       if (idx < realmap.size() && ((idx + 1) % WIDTH != 0)) {
-        it = find(maze.begin(), maze.end(), idx + 1);
-        if (it != maze.end()) {
+        if (maze.count(idx + 1) == 1) {
           idxn = idx - 1;
           visited++;
         }
       }
 
       if (idx > WIDTH) {
-        it = find(maze.begin(), maze.end(), idx - WIDTH);
-        if (it != maze.end()) {
+        if (maze.count(idx - WIDTH) == 1) {
           idxn = idx + WIDTH;
           visited++;
         }
       }
 
       if (idx + WIDTH < realmap.size()) {
-        it = find(maze.begin(), maze.end(), idx + WIDTH);
-        if (it != maze.end()) {
+        if (maze.count(idx + WIDTH) == 1) {
           idxn = idx - WIDTH;
           visited++;
         }
@@ -301,64 +310,39 @@ int main(int argc, char* args[]) {
           visited, idx, idxn);
 
       if (visited == 1) {
-        maze.push_back(idx);
-        maze.push_back(idxn);
+        maze.insert(idx);
+        maze.insert(idxn);
+        /*
         cout << "maze: ";
-        for (int i = 0; i < maze.size(); i++) {
-          cout << maze[i] << " ";
-        }
+        for (auto i : maze)
+          cout << i << " ";
         cout << endl;
+        */
 
-        it = find(walls.begin(), walls.end(), idxn + 1);
-        if (it == walls.end()) {
-          it = find(maze.begin(), maze.end(), idxn + 1);
-          if (it == maze.end())
-            walls.push_back(idxn + 1);
-        }
+        // if not in walls and not in maze, add to walls
+        if (walls.count(idxn + 1) == 0 && maze.count(idxn + 1) == 0)
+          walls.insert(idxn + 1);
+        if (walls.count(idxn - 1) == 0 && maze.count(idxn - 1) == 0)
+          walls.insert(idxn - 1);
+        if (walls.count(idxn + WIDTH) == 0 && maze.count(idxn + WIDTH) == 0)
+          walls.insert(idxn + WIDTH);
+        if (walls.count(idxn - WIDTH) == 0 && maze.count(idxn - WIDTH) == 0)
+          walls.insert(idxn - WIDTH);
 
-        it = find(walls.begin(), walls.end(), idxn - 1);
-        if (it == walls.end()) {
-          it = find(maze.begin(), maze.end(), idxn - 1);
-          if (it == maze.end())
-            walls.push_back(idxn - 1);
-        }
-
-        it = find(walls.begin(), walls.end(), idxn + WIDTH);
-        if (it == walls.end()) {
-          it = find(maze.begin(), maze.end(), idxn + WIDTH);
-          if (it == maze.end())
-            walls.push_back(idxn + WIDTH);
-        }
-
-        it = find(walls.begin(), walls.end(), idxn - WIDTH);
-        if (it == walls.end()) {
-          it = find(maze.begin(), maze.end(), idxn - WIDTH);
-          if (it == maze.end())
-            walls.push_back(idxn - WIDTH);
-        }
-
-        it = find(walls.begin(), walls.end(), idxn);
-        if (it != walls.end()) {
-          SDL_Log("erased idxn %d", idxn);
-          walls.erase(it);
+        if (walls.count(idxn) == 1) {
+          // SDL_Log("erased idxn %d", idxn);
+          walls.erase(idxn);
         }
       }
-
-      it = find(walls.begin(), walls.end(), idx);
-      if (it != walls.end()) {
-        SDL_Log("erased idx %d", idx);
-        walls.erase(it);
+      if (walls.count(idx) == 1) {
+        // SDL_Log("erased idx %d", idx);
+        walls.erase(idx);
       }
 
-      for (int i = 0; i < maze.size(); i++) {
-        realmap[maze[i]] = 1;
+      for (auto i : maze) {
+        if (i < realmap.size())
+          realmap[i] = 1;
       }
-      cout << "walls: ";
-      for (int i = 0; i < walls.size(); i++) {
-        cout << walls[i] << " ";
-        // realmap[walls[i]] = 2;
-      }
-      cout << endl;
     }
 
     int x = 0;
