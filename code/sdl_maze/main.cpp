@@ -58,11 +58,8 @@ Tile::Tile(int x, int y, int w)
 
 void Tile::render() {
   SDL_SetRenderDrawColor(gRenderer, color.r, color.g, color.b, 0xFF);
-  cout << "render " << mTile << endl;
-  if (mTile.x == 1001 && mTile.y == 88)
-    SDL_Log("yep");
   if (SDL_RenderFillRect(gRenderer, &mTile) != 0)
-    SDL_Log("WHOA");
+    SDL_Log("error rendering tile");
 }
 
 bool init() {
@@ -188,6 +185,8 @@ int main(int argc, char* args[]) {
   int idx = rand() % realmap.size();
 
   maze.insert(idx);
+  realmap[idx] = 1;
+
   SDL_Log("first cell %d", idx);
 
   if (idx > 1 && idx % WIDTH != 0) {
@@ -206,11 +205,14 @@ int main(int argc, char* args[]) {
     walls.insert(idx + WIDTH);  // down
   }
 
-  for (auto i : maze) {
-    realmap[i] = 1;
+  /*
+  for (auto i : walls) {
+    realmap[i] = 2;
   }
+  */
 
-  bool next = true;
+  bool next = false;
+  // unsigned long maxWall = 0, maxMaze = 0;
   while (!quit) {
     while (SDL_PollEvent(&e) != 0) {
       switch (e.type) {
@@ -262,7 +264,7 @@ int main(int argc, char* args[]) {
       }
     }
 
-    if (next == true) {
+    if (next == true && walls.size() != 0) {
       //next = false;
 
       // pick random wall
@@ -273,7 +275,7 @@ int main(int argc, char* args[]) {
         if (n++ == idx)
           idx = i;
       }
-      SDL_Log("next cell %d", idx);
+      // SDL_Log("next cell %d", idx);
 
       int visited = 0;
       int idxn = 0;
@@ -306,34 +308,37 @@ int main(int argc, char* args[]) {
         }
       }
 
-      SDL_Log("%d squares have been visited adjacent to idx %d, idxn %d",
-          visited, idx, idxn);
-
       if (visited == 1) {
         maze.insert(idx);
         maze.insert(idxn);
-        /*
-        cout << "maze: ";
-        for (auto i : maze)
-          cout << i << " ";
-        cout << endl;
-        */
 
         // if not in walls and not in maze, add to walls
-        if (walls.count(idxn + 1) == 0 && maze.count(idxn + 1) == 0)
-          walls.insert(idxn + 1);
-        if (walls.count(idxn - 1) == 0 && maze.count(idxn - 1) == 0)
-          walls.insert(idxn - 1);
-        if (walls.count(idxn + WIDTH) == 0 && maze.count(idxn + WIDTH) == 0)
-          walls.insert(idxn + WIDTH);
-        if (walls.count(idxn - WIDTH) == 0 && maze.count(idxn - WIDTH) == 0)
-          walls.insert(idxn - WIDTH);
+        if (walls.count(idxn + 1) == 0 && maze.count(idxn + 1) == 0) {
+          if ((idxn + 1) % WIDTH != 0 && (idxn + 1) < realmap.size())
+            walls.insert(idxn + 1);
+        }
+
+        if (walls.count(idxn - 1) == 0 && maze.count(idxn - 1) == 0) {
+          if (idxn != 0 && (idxn % WIDTH) != 0)
+            walls.insert(idxn - 1);
+        }
+
+        if (walls.count(idxn + WIDTH) == 0 && maze.count(idxn + WIDTH) == 0) {
+          if ((idxn + WIDTH) < realmap.size())
+            walls.insert(idxn + WIDTH);
+        }
+
+        if (walls.count(idxn - WIDTH) == 0 && maze.count(idxn - WIDTH) == 0) {
+          if ((idxn - WIDTH) >= 0)
+            walls.insert(idxn - WIDTH);
+        }
 
         if (walls.count(idxn) == 1) {
           // SDL_Log("erased idxn %d", idxn);
           walls.erase(idxn);
         }
       }
+
       if (walls.count(idx) == 1) {
         // SDL_Log("erased idx %d", idx);
         walls.erase(idx);
@@ -343,6 +348,13 @@ int main(int argc, char* args[]) {
         if (i < realmap.size())
           realmap[i] = 1;
       }
+
+      /*
+      for (auto i : walls) {
+        if (i < realmap.size())
+          realmap[i] = 2;
+      }
+      */
     }
 
     int x = 0;
@@ -379,6 +391,28 @@ int main(int argc, char* args[]) {
       tile.render();
     }
     SDL_RenderPresent(gRenderer);
+
+    // debug
+    /*
+    if (walls.size() > maxWall)
+      maxWall = walls.size();
+    if (maze.size() > maxMaze)
+      maxMaze = maze.size();
+    SDL_Log("walls %lu max %lu maze %lu max %lu", walls.size(), maxWall, maze.size(), maxMaze);
+
+    //if (maxMaze > 10000)
+    //  break;
+    //
+    int highwall = 0;
+    if (!walls.empty())
+      highwall = *walls.rbegin();
+
+    int highmaze = 0;
+    if (!maze.empty())
+      highmaze = *maze.rbegin();
+
+    SDL_Log("highest wall %d highest maze %d", highwall, highmaze);
+    */
   }
 
   close();
