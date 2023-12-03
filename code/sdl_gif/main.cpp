@@ -72,6 +72,31 @@ struct Camera {
   // int z;
 };
 
+vector<int> getneighbors(int idx, int width, int length) {
+  vector<int> res;
+  // left
+  if (idx != 0 && idx % width != 0) {
+    res.push_back(idx - 1);
+  }
+
+  // right
+  if ((idx + 1) != length && ((idx + 1) % width != 0)) {
+    res.push_back(idx + 1);
+  }
+
+  // up
+  if (idx - width > 0) {
+    res.push_back(idx - width);
+  }
+
+  // down
+  if ((idx + width) <= length) {
+    res.push_back(idx + width);
+  }
+
+  return res;
+}
+
 int main(int argc, char* args[]) {
   if (!init()) {
     printf("Failed to initialize!\n");
@@ -84,7 +109,7 @@ int main(int argc, char* args[]) {
   // Camera camera = {0, 0, 11};
   Camera camera = {};
 
-  int fh = open("myinputbig.gif", O_RDONLY);
+  int fh = open("/home/cc/7sd.gif", O_RDONLY);
   if (fh == -1) {
     perror("error opening input gif");
     return 1;
@@ -149,43 +174,16 @@ int main(int argc, char* args[]) {
       set<int> pixels;
       pixels.insert(idx);
       while (pixels.size() != 0) {
-        // SDL_Log("%lu candidate pixels", pixels.size());
-
         auto it = pixels.begin();
-        int iidx = *it;
+        if (gif->SavedImages->RasterBits[*it] == 0) {
+          break;
+        }
         gif->SavedImages->RasterBits[*it] = 0;
-        // todo: i keep rewriting this. make it a utility
 
-        // left
-        if (iidx != 0 && iidx % gif->SWidth != 0) {
-          int idxn = iidx - 1;
-          // SDL_Log("left %d is %d", idxn, gif->SavedImages->RasterBits[idxn]);
-          if (gif->SavedImages->RasterBits[idxn] == replace)
-            pixels.insert(idxn);
-        }
-
-        // right
-        if ((iidx + 1) != pixelcount && ((iidx + 1) % gif->SWidth != 0)) {
-          int idxn = iidx + 1;
-          // SDL_Log("right %d is %d", idxn, gif->SavedImages->RasterBits[idxn]);
-          if (gif->SavedImages->RasterBits[idxn] == replace)
-            pixels.insert(idxn);
-        }
-
-        // up
-        if (iidx - gif->SWidth > 0) {
-          int idxn = iidx - gif->SWidth;
-          // SDL_Log("up %d is %d", idxn, gif->SavedImages->RasterBits[idxn]);
-          if (gif->SavedImages->RasterBits[idxn] == replace)
-            pixels.insert(idxn);
-        }
-
-        // down
-        if ((iidx + gif->SWidth) <= pixelcount) {
-          int idxn = iidx + gif->SWidth;
-          // SDL_Log("down %d is %d", idxn, gif->SavedImages->RasterBits[idxn]);
-          if (gif->SavedImages->RasterBits[idxn] == replace)
-            pixels.insert(idxn);
+        vector<int> neighbors = getneighbors(*it, gif->SWidth, pixelcount);
+        for (auto i : neighbors) {
+          if (gif->SavedImages->RasterBits[i] == replace)
+            pixels.insert(i);
         }
 
         pixels.erase(it);
@@ -209,17 +207,6 @@ int main(int argc, char* args[]) {
       }
       ++src;
     }
-    /*
-    SDL_Rect mTile;
-    mTile.x = click_x;
-    mTile.y = click_y;
-    mTile.w = 10;
-    mTile.h = 10;
-    if (click_x != 0 || click_y != 0) {
-      SDL_SetRenderDrawColor(gRenderer, 0xFF, 0, 0, 0xFF);
-      SDL_RenderFillRect(gRenderer, &mTile);
-    }
-    */
     SDL_RenderPresent(gRenderer);
   }
 
