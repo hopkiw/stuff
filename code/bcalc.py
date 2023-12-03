@@ -41,9 +41,9 @@ def _exec(op, op1, op2):
             res = res | mask
     elif op in ('mul', '*'):
         res = op1 * op2
-        if res & MASK != res:
-            print('result overflow')
+        res2 = (res & 0xffff0000) >> 16
         res = res & MASK
+        res = (res, res2)
     elif op in ('div', '/'):
         res = (int(op1 / op2), op1 % op2)
     elif op in ('add', '+'):
