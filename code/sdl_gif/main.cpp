@@ -17,55 +17,10 @@ using namespace std;
 
 const int SCREEN_WIDTH = 1000;
 const int SCREEN_HEIGHT = 480;
-const int WIDTH = 99;
-
-struct Color {
-  int r, g, b;
-};
-
-class Tile {
- public:
-    static const int TILE_WIDTH = 10;
-
-    Tile(int, int, int);
-
-    void render();
-
-    SDL_Rect mTile;
-    Color color;
-
-    int mPosX, mPosY;
-};
-
-
-ostream& operator<<(ostream& os, const SDL_Rect& tile) {
-    return os << "{"
-              << "x: " << tile.x << ", "
-              << "y: " << tile.y << ", "
-              << "w: " << tile.w << ", "
-              << "h: " << tile.h
-              << "}";
-}
-
-bool init();
-void close();
+// const int WIDTH = 99;
 
 SDL_Window* gWindow = NULL;
 SDL_Renderer* gRenderer = NULL;
-
-Tile::Tile(int x, int y, int w)
-: color({}), mPosX(x), mPosY(y) {
-  mTile.x = mPosX;
-  mTile.y = mPosY;
-  mTile.w = w;
-  mTile.h = w;
-}
-
-void Tile::render() {
-  SDL_SetRenderDrawColor(gRenderer, color.r, color.g, color.b, 0xFF);
-  if (SDL_RenderFillRect(gRenderer, &mTile) != 0)
-    SDL_Log("error rendering tile");
-}
 
 bool init() {
   // Initialization flag
@@ -111,53 +66,10 @@ void close() {
   SDL_Quit();
 }
 
-/*
-vector<int> parse_map(vector<string> lines) {
-  vector<int> res;
-  for (auto line : lines) {
-    for (int i = 0; i < line.length(); i++) {
-      char chr = line[i];
-      switch (chr) {
-        case '1':
-          res.push_back(1);
-          break;
-        case '0':
-          res.push_back(0);
-          break;
-        default:
-          SDL_Log("unknown character in map: \"%c\"", chr);
-          break;
-      }
-    }
-  }
-
-  return res;
-}
-*/
-
-/*
-void save(vector<int> map) {
-  ofstream myfile;
-  myfile.open("example.txt");
-  for (int i = 0; i < map.size(); i++) {
-    if (map[i] == 1) {
-      myfile << '1';
-    } else {
-      myfile << '0';
-    }
-  if ((i+1) % WIDTH == 0)
-    myfile << '\n';
-  }
-  myfile.close();
-
-  return;
-}
-*/
-
 struct Camera {
   int x;
   int y;
-  int z;
+  // int z;
 };
 
 int main(int argc, char* args[]) {
@@ -169,9 +81,10 @@ int main(int argc, char* args[]) {
 
   SDL_Event e;
 
-  Camera camera = {0, 0, 11};
+  // Camera camera = {0, 0, 11};
+  Camera camera = {};
 
-  int fh = open("myinput.gif", O_RDONLY);
+  int fh = open("myinputbig.gif", O_RDONLY);
   if (fh == -1) {
     perror("error opening input gif");
     return 1;
@@ -185,12 +98,13 @@ int main(int argc, char* args[]) {
   }
   close(fh);
 
-  SDL_Log("Loaded gif %dx%d", gif->SWidth, gif->SHeight);
+  SDL_Log("Loaded GIF %dx%d", gif->SWidth, gif->SHeight);
 
   int click_x = 0, click_y = 0;
 
+  bool fill = false;
   while (!quit) {
-    //time_t start = clock();
+    // time_t start = clock();
     while (SDL_PollEvent(&e) != 0) {
       switch (e.type) {
         case SDL_QUIT:
@@ -219,9 +133,62 @@ int main(int argc, char* args[]) {
           if (e.button.button == SDL_BUTTON_LEFT) {
             click_x = e.button.x - camera.x;
             click_y = e.button.y - camera.y;
+            fill = true;
             SDL_Log("clicked (%d,%d)", click_x, click_y);
           }
           break;
+      }
+    }
+
+    if (fill == true) {
+      fill = false;
+      int idx = (click_y * gif->SWidth) + click_x;
+      int pixelcount = gif->SWidth * gif->SHeight;
+      int replace = *(gif->SavedImages->RasterBits + idx);
+
+      set<int> pixels;
+      pixels.insert(idx);
+      while (pixels.size() != 0) {
+        // SDL_Log("%lu candidate pixels", pixels.size());
+
+        auto it = pixels.begin();
+        int iidx = *it;
+        gif->SavedImages->RasterBits[*it] = 0;
+        // todo: i keep rewriting this. make it a utility
+
+        // left
+        if (iidx != 0 && iidx % gif->SWidth != 0) {
+          int idxn = iidx - 1;
+          // SDL_Log("left %d is %d", idxn, gif->SavedImages->RasterBits[idxn]);
+          if (gif->SavedImages->RasterBits[idxn] == replace)
+            pixels.insert(idxn);
+        }
+
+        // right
+        if ((iidx + 1) != pixelcount && ((iidx + 1) % gif->SWidth != 0)) {
+          int idxn = iidx + 1;
+          // SDL_Log("right %d is %d", idxn, gif->SavedImages->RasterBits[idxn]);
+          if (gif->SavedImages->RasterBits[idxn] == replace)
+            pixels.insert(idxn);
+        }
+
+        // up
+        if (iidx - gif->SWidth > 0) {
+          int idxn = iidx - gif->SWidth;
+          // SDL_Log("up %d is %d", idxn, gif->SavedImages->RasterBits[idxn]);
+          if (gif->SavedImages->RasterBits[idxn] == replace)
+            pixels.insert(idxn);
+        }
+
+        // down
+        if ((iidx + gif->SWidth) <= pixelcount) {
+          int idxn = iidx + gif->SWidth;
+          // SDL_Log("down %d is %d", idxn, gif->SavedImages->RasterBits[idxn]);
+          if (gif->SavedImages->RasterBits[idxn] == replace)
+            pixels.insert(idxn);
+        }
+
+        pixels.erase(it);
       }
     }
 
@@ -234,7 +201,7 @@ int main(int argc, char* args[]) {
     int pixels = gif->SWidth * gif->SHeight;
     for (int i = 0; i < pixels; ++i) {
       GifColorType color = gif->SColorMap->Colors[*src];
-      SDL_SetRenderDrawColor(gRenderer, color.Red, color.Green, color.Blue, 0xFF);
+      SDL_SetRenderDrawColor(gRenderer, color.Red, color.Green, color.Blue, 0);
       SDL_RenderDrawPoint(gRenderer, ++x + camera.x, y + camera.y);
       if (i > 0 && (i % gif->SWidth == 0)) {
         x = 0;
@@ -242,6 +209,7 @@ int main(int argc, char* args[]) {
       }
       ++src;
     }
+    /*
     SDL_Rect mTile;
     mTile.x = click_x;
     mTile.y = click_y;
@@ -251,6 +219,7 @@ int main(int argc, char* args[]) {
       SDL_SetRenderDrawColor(gRenderer, 0xFF, 0, 0, 0xFF);
       SDL_RenderFillRect(gRenderer, &mTile);
     }
+    */
     SDL_RenderPresent(gRenderer);
   }
 
