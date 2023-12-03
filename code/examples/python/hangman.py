@@ -142,7 +142,7 @@ def play():
       print("{} guesses left\n".format(MAX_GUESSES - len(guessed)))
 
     # Guess a letter
-    guess = raw_input("Guess a letter: ").lower()
+    guess = input("Guess a letter: ").lower()
     if not guess.isalpha() or len(guess) != 1:
       print("just a letter, please.")
       continue

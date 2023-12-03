@@ -149,7 +149,7 @@ class Hangman(object):
                 break
             else:
                 print("{} guesses left\n".format(
-                    MAX_GUESSES - len(self.guessed)))
+                    MAX_GUESSES - self.errors))
 
             # Guess a letter
             guess = input("Guess a letter: ").lower()

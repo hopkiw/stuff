@@ -25,31 +25,31 @@ def get_computer_choice():
 
 
 def play_again():
-    choice = raw_input("Play again? Y/n ").lower()
+    choice = input("Play again? Y/n ").lower()
     return (choice == "y" or choice == "")
 
 
 def main():
-    play_string = generate_play_string()
+    play_string = generate_play_string(["Rock", "Paper", "Scissors"])
     while True:
-      player = raw_input(play_string).lower()
-      if player not in options:
-        print("Hey, that's not one of the options!")
-        continue
-      player = options.index(player)
-      computer = get_computer_choice()
+        player = input(play_string).lower()
+        if player not in options:
+            print("Hey, that's not one of the options!")
+            continue
+        player = options.index(player)
+        computer = get_computer_choice()
 
-      if player == computer:
-        print("It's a draw! We both picked %s" % options[player])
-      elif computer == player + 1 or (computer == 0 and player == len(options) - 1):
-        print("Computer wins! %s beats %s" %
-              (options[computer], options[player]))
-      else:
-        print("Player wins! %s beats %s" %
-              (options[player], options[computer]))
+        if player == computer:
+            print("It's a draw! We both picked %s" % options[player])
+        elif computer == player + 1 or (computer == 0 and player == len(options) - 1):
+            print("Computer wins! %s beats %s" %
+                  (options[computer], options[player]))
+        else:
+            print("Player wins! %s beats %s" %
+                  (options[player], options[computer]))
 
-      if not play_again():
-        break
+        if not play_again():
+            break
 
 
 if __name__ == "__main__":

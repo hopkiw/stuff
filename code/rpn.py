@@ -118,9 +118,11 @@ def main(stdscr):
             editwin.noutrefresh()
             if res:
                 try:
-                    _exec(res)
+                    ret = _exec(res)
                 except IndexError:
                     raise Exception('stack empty')
+                if ret == 'quit':
+                    break
 
         else:
             print('unk key', res, file=sys.stderr)
