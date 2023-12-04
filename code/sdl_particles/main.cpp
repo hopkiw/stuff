@@ -148,12 +148,12 @@ int main(int argc, char* args[]) {
               break;
           }
           break;
-        case SDL_MOUSEBUTTONDOWN:
-          if (e.button.button == SDL_BUTTON_LEFT) {
+        case SDL_MOUSEMOTION:
+          if (e.motion.state & SDL_BUTTON_LMASK) {
             click_x = e.button.x - camera.x;
             click_y = e.button.y - camera.y;
             SDL_Log("clicked (%d,%d)", click_x, click_y);
-            Particle particle = {click_x, click_y, 0};
+            Particle particle = {click_x, click_y, -9};
             particles.push_back(particle);
           }
           break;
@@ -177,7 +177,7 @@ int main(int argc, char* args[]) {
     vector<SDL_Rect> tiles;
     for ( vector<Particle>::iterator it = particles.begin();
         it != particles.end(); ) {
-      it->v += 9.8;
+      it->v += 1;
       it->y += it->v;
 
       if (it->y >= 400) {
@@ -194,8 +194,6 @@ int main(int argc, char* args[]) {
         ++it;
       }
     }
-
-    SDL_Log("there are %lu tiles and %lu pixels", tiles.size(), particles.size());
 
     for (auto tile : tiles) {
         SDL_SetRenderDrawColor(gRenderer, 0xFF, 0, 0, 0);
