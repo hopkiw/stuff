@@ -174,7 +174,6 @@ int main(int argc, char* args[]) {
       int x = rand() % 9;
       if (rand() % 2 != 0) {
         x = -1 * x;
-        SDL_Log("left");
       }
       Particle particle = {click_x, click_y, x, -9};
       particles.push_back(particle);
@@ -198,7 +197,11 @@ int main(int argc, char* args[]) {
     for ( vector<Particle>::iterator it = particles.begin();
         it != particles.end(); ) {
       it->vy += 1;
-      it->vx -= 1;
+      if (it->vx < 0) {
+        it->vx += 1;
+      } else {
+        it->vx -= 1;
+      }
       it->y += it->vy;
       it->x += it->vx;
 
@@ -208,8 +211,8 @@ int main(int argc, char* args[]) {
         SDL_Rect mTile;
         mTile.x = it->x;
         mTile.y = it->y;
-        mTile.h = 5;
-        mTile.w = 5;
+        mTile.h = 4;
+        mTile.w = 4;
 
         tiles.push_back(mTile);
 
@@ -217,9 +220,19 @@ int main(int argc, char* args[]) {
       }
     }
 
+    int color = 0;
     for (auto tile : tiles) {
+      if (color == 0) {
         SDL_SetRenderDrawColor(gRenderer, 0xFF, 0, 0, 0);
-        SDL_RenderFillRect(gRenderer, &tile);
+        color++;
+      } else if (color == 1) {
+        SDL_SetRenderDrawColor(gRenderer, 0, 0xFF, 0, 0);
+        color++;
+      } else if (color == 2) {
+        SDL_SetRenderDrawColor(gRenderer, 0, 0, 0xFF, 0);
+        color = 0;
+      }
+      SDL_RenderFillRect(gRenderer, &tile);
     }
 
     SDL_RenderPresent(gRenderer);
