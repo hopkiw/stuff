@@ -14,19 +14,19 @@
 
 using namespace std;
 
-const int SCREEN_WIDTH = 1000;
-const int SCREEN_HEIGHT = 480;
+const int SCREEN_WIDTH = 500;
+const int SCREEN_HEIGHT = 500;
 // const int WIDTH = 99;
 
 
 struct Particle {
-  int x, y, v;
+  int x, y, vx, vy;
 
-  Particle(int, int, int);
-  Particle() : x(0), y(0), v(0) {}
+  Particle(int, int, int, int);
+  Particle() : x(0), y(0), vx(0), vy(0) {}
 };
 
-Particle::Particle(int x, int y, int v) : x{x}, y{y}, v{v} {}
+Particle::Particle(int x, int y, int vx, int vy) : x{x}, y{y}, vx{vx}, vy{vy} {}
 
 SDL_Window* gWindow = NULL;
 SDL_Renderer* gRenderer = NULL;
@@ -119,8 +119,10 @@ int main(int argc, char* args[]) {
   Camera camera = {};
 
   int click_x = 0, click_y = 0;
+  bool click = false;
 
   vector<Particle> particles;
+  srand(clock());
 
   while (!quit) {
     // time_t start = clock();
@@ -150,14 +152,32 @@ int main(int argc, char* args[]) {
           break;
         case SDL_MOUSEMOTION:
           if (e.motion.state & SDL_BUTTON_LMASK) {
+            click_x = e.motion.x - camera.x;
+            click_y = e.motion.y - camera.y;
+          }
+          break;
+        case SDL_MOUSEBUTTONDOWN:
+          if (e.button.button == SDL_BUTTON_LEFT) {
+            click = true;
             click_x = e.button.x - camera.x;
             click_y = e.button.y - camera.y;
             SDL_Log("clicked (%d,%d)", click_x, click_y);
-            Particle particle = {click_x, click_y, -9};
-            particles.push_back(particle);
           }
           break;
+        case SDL_MOUSEBUTTONUP:
+          if (e.button.button == SDL_BUTTON_LEFT)
+            click = false;
+          break;
       }
+    }
+    if (click == true) {
+      int x = rand() % 9;
+      if (rand() % 2 != 0) {
+        x = -1 * x;
+        SDL_Log("left");
+      }
+      Particle particle = {click_x, click_y, x, -9};
+      particles.push_back(particle);
     }
 
     // Non-white background
@@ -177,8 +197,10 @@ int main(int argc, char* args[]) {
     vector<SDL_Rect> tiles;
     for ( vector<Particle>::iterator it = particles.begin();
         it != particles.end(); ) {
-      it->v += 1;
-      it->y += it->v;
+      it->vy += 1;
+      it->vx -= 1;
+      it->y += it->vy;
+      it->x += it->vx;
 
       if (it->y >= 400) {
         it = particles.erase(it);
@@ -186,8 +208,8 @@ int main(int argc, char* args[]) {
         SDL_Rect mTile;
         mTile.x = it->x;
         mTile.y = it->y;
-        mTile.h = 10;
-        mTile.w = 10;
+        mTile.h = 5;
+        mTile.w = 5;
 
         tiles.push_back(mTile);
 
