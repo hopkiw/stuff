@@ -217,15 +217,16 @@ int main(int argc, char* args[]) {
     int x = 0, y = 0;
     SDL_SetRenderDrawColor(gRenderer, 0, 0, 0, 0);
     for (int i = 0; i < (400 * 400); i++) {
-      SDL_RenderDrawPoint(gRenderer, x++, y);
+      SDL_RenderDrawPoint(gRenderer, x++ + camera.x, y + camera.y);
       if (i % 400 == 0) {
         x = 0;
         ++y;
-        // int hue = (y + offset) % 360;
-        int hue = y % 360;
+        int hue = (y + offset) % 360;
+        // int hue = y % 360;
+        if (hue % 60 == 0)
+          ++hue;
         Color cnew = hslToRgb(hue, 1, 0.5);
         SDL_SetRenderDrawColor(gRenderer, cnew.r, cnew.g, cnew.b, 0);
-        // SDL_Log("red %d at %dx%d", color, x, y);
       }
     }
 
