@@ -15,9 +15,18 @@
 
 using namespace std;
 
-const int SCREEN_WIDTH = 1000;
+const int SCREEN_WIDTH = 480;
 const int SCREEN_HEIGHT = 480;
 // const int WIDTH = 99;
+
+struct Cube {
+  int x, y, v;
+
+  Cube(int, int, int);
+  Cube() : x(0), y(0), v(0) {}
+};
+
+Cube::Cube(int x, int y, int v) : x{x}, y{y}, v{v} {}
 
 SDL_Window* gWindow = NULL;
 SDL_Renderer* gRenderer = NULL;
@@ -109,7 +118,7 @@ int main(int argc, char* args[]) {
   // Camera camera = {0, 0, 11};
   Camera camera = {};
 
-  int fh = open("/home/cc/7sd.gif", O_RDONLY);
+  int fh = open("vegeta.gif", O_RDONLY);
   if (fh == -1) {
     perror("error opening input gif");
     return 1;
@@ -127,7 +136,7 @@ int main(int argc, char* args[]) {
 
   int click_x = 0, click_y = 0;
 
-  bool fill = false;
+  Cube cube = {0, gif->SHeight, 0};
   while (!quit) {
     // time_t start = clock();
     while (SDL_PollEvent(&e) != 0) {
@@ -152,40 +161,18 @@ int main(int argc, char* args[]) {
             case 'l' :
               camera.x += 10;
               break;
+            case 'n':
+              cube.v += 3;
+              break;
           }
           break;
         case SDL_MOUSEBUTTONDOWN:
           if (e.button.button == SDL_BUTTON_LEFT) {
             click_x = e.button.x - camera.x;
             click_y = e.button.y - camera.y;
-            fill = true;
             SDL_Log("clicked (%d,%d)", click_x, click_y);
           }
           break;
-      }
-    }
-
-    if (fill == true) {
-      fill = false;
-      int idx = (click_y * gif->SWidth) + click_x;
-      int pixelcount = gif->SWidth * gif->SHeight;
-      int replace = *(gif->SavedImages->RasterBits + idx);
-
-      set<int> pixels;
-      pixels.insert(idx);
-      while (pixels.size() != 0) {
-        auto it = pixels.begin();
-        if (gif->SavedImages->RasterBits[*it] == 0) {
-          break;
-        }
-        gif->SavedImages->RasterBits[*it] = 0;
-
-        vector<int> neighbors = getneighbors(*it, gif->SWidth, pixelcount);
-        for (auto i : neighbors) {
-          if (gif->SavedImages->RasterBits[i] == replace)
-            pixels.insert(i);
-        }
-        pixels.erase(it);
       }
     }
 
@@ -198,7 +185,17 @@ int main(int argc, char* args[]) {
     int pixels = gif->SWidth * gif->SHeight;
     for (int i = 0; i < pixels; ++i) {
       GifColorType color = gif->SColorMap->Colors[*src];
+
       SDL_SetRenderDrawColor(gRenderer, color.Red, color.Green, color.Blue, 0);
+      if (x >= cube.x && x < (cube.x + 66)) {
+        if (y >= cube.y && y < (cube.y + 66)) {
+          SDL_SetRenderDrawColor(gRenderer,
+              0xFF - color.Red,
+              0xFF - color.Green,
+              0xFF - color.Blue,
+              0);
+        }
+      }
       SDL_RenderDrawPoint(gRenderer, ++x + camera.x, y + camera.y);
       if (i > 0 && (i % gif->SWidth == 0)) {
         x = 0;
@@ -206,6 +203,12 @@ int main(int argc, char* args[]) {
       }
       ++src;
     }
+
+    if (cube.v != 0) {
+      ++cube.x;
+      --cube.y;
+    }
+
     SDL_RenderPresent(gRenderer);
   }
 

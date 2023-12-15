@@ -3,7 +3,6 @@
 #include <time.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <gif_lib.h>
 
 #include <cstdlib>
 #include <iostream>
@@ -15,8 +14,8 @@
 
 using namespace std;
 
-const int SCREEN_WIDTH = 1000;
-const int SCREEN_HEIGHT = 480;
+const int SCREEN_WIDTH = 500;
+const int SCREEN_HEIGHT = 500;
 // const int WIDTH = 99;
 
 SDL_Window* gWindow = NULL;
@@ -97,6 +96,54 @@ vector<int> getneighbors(int idx, int width, int length) {
   return res;
 }
 
+struct Color {
+  int r, g, b;
+};
+
+Color hslToRgb(int hin, float s, float l) {
+  if (hin < 0 || hin > 360)
+    SDL_Log("error 1");
+  if (s < 0 || s > 1)
+    SDL_Log("error 2");
+  if (l < 0 || l > 1)
+    SDL_Log("error 3");
+
+  float c = (1 - abs((2 * l) - 1)) * s;
+  float h = hin / 60.0;
+  float x = c * (1 - abs(fmod(h, 2) - 1));
+  float m = l - (0.5 * c);
+
+  struct {
+    float r, g, b;
+  } res {};
+
+  if        (h < 1 && h > 0) {
+    res = {c, x, 0};
+  } else if (h < 2 && h > 1) {
+    res = {x, c, 0};
+  } else if (h < 3 && h > 2) {
+    res = {0, c, x};
+  } else if (h < 4 && h > 3) {
+    res = {0, x, c};
+  } else if (h < 5 && h > 4) {
+    res = {x, 0, c};
+  } else if (h < 6 && h > 5) {
+    res = {c, 0, x};
+  }
+
+  res = {
+    (res.r + m) * 255,
+    (res.g + m) * 255,
+    (res.b + m) * 255};
+
+  Color rres;
+  rres.r = static_cast<int>(res.r);
+  rres.g = static_cast<int>(res.g);
+  rres.b = static_cast<int>(res.b);
+
+  return rres;
+}
+
 int main(int argc, char* args[]) {
   if (!init()) {
     printf("Failed to initialize!\n");
@@ -105,29 +152,17 @@ int main(int argc, char* args[]) {
   bool quit = false;
 
   SDL_Event e;
+  // Color color = hslToRgb(30, 95.8, 52.9);
+  // Color color = hslToRgb(210, 0.79, 0.3);
+  // SDL_Log("convert to rgb %d,%d,%d", color.r, color.g, color.b);
 
   // Camera camera = {0, 0, 11};
   Camera camera = {};
 
-  int fh = open("/home/cc/7sd.gif", O_RDONLY);
-  if (fh == -1) {
-    perror("error opening input gif");
-    return 1;
-  }
-
-  int err;
-  GifFileType *gif = DGifOpenFileHandle(fh, &err);
-  if (DGifSlurp(gif) != GIF_OK) {
-    cout << "GIF_ERR" << endl;
-    return 1;
-  }
-  close(fh);
-
-  SDL_Log("Loaded GIF %dx%d", gif->SWidth, gif->SHeight);
-
   int click_x = 0, click_y = 0;
+  bool click = false;
 
-  bool fill = false;
+  int offset = 0;
   while (!quit) {
     // time_t start = clock();
     while (SDL_PollEvent(&e) != 0) {
@@ -154,38 +189,24 @@ int main(int argc, char* args[]) {
               break;
           }
           break;
+        case SDL_MOUSEMOTION:
+          if (e.motion.state & SDL_BUTTON_LMASK) {
+            click_x = e.motion.x - camera.x;
+            click_y = e.motion.y - camera.y;
+          }
+          break;
         case SDL_MOUSEBUTTONDOWN:
           if (e.button.button == SDL_BUTTON_LEFT) {
+            click = true;
             click_x = e.button.x - camera.x;
             click_y = e.button.y - camera.y;
-            fill = true;
             SDL_Log("clicked (%d,%d)", click_x, click_y);
           }
           break;
-      }
-    }
-
-    if (fill == true) {
-      fill = false;
-      int idx = (click_y * gif->SWidth) + click_x;
-      int pixelcount = gif->SWidth * gif->SHeight;
-      int replace = *(gif->SavedImages->RasterBits + idx);
-
-      set<int> pixels;
-      pixels.insert(idx);
-      while (pixels.size() != 0) {
-        auto it = pixels.begin();
-        if (gif->SavedImages->RasterBits[*it] == 0) {
+        case SDL_MOUSEBUTTONUP:
+          if (e.button.button == SDL_BUTTON_LEFT)
+            click = false;
           break;
-        }
-        gif->SavedImages->RasterBits[*it] = 0;
-
-        vector<int> neighbors = getneighbors(*it, gif->SWidth, pixelcount);
-        for (auto i : neighbors) {
-          if (gif->SavedImages->RasterBits[i] == replace)
-            pixels.insert(i);
-        }
-        pixels.erase(it);
       }
     }
 
@@ -193,20 +214,24 @@ int main(int argc, char* args[]) {
     SDL_SetRenderDrawColor(gRenderer, 0xBA, 0xBA, 0xBA, 0xBA);
     SDL_RenderClear(gRenderer);
 
-    GifByteType* src = gif->SavedImages->RasterBits;
     int x = 0, y = 0;
-    int pixels = gif->SWidth * gif->SHeight;
-    for (int i = 0; i < pixels; ++i) {
-      GifColorType color = gif->SColorMap->Colors[*src];
-      SDL_SetRenderDrawColor(gRenderer, color.Red, color.Green, color.Blue, 0);
-      SDL_RenderDrawPoint(gRenderer, ++x + camera.x, y + camera.y);
-      if (i > 0 && (i % gif->SWidth == 0)) {
+    SDL_SetRenderDrawColor(gRenderer, 0, 0, 0, 0);
+    for (int i = 0; i < (400 * 400); i++) {
+      SDL_RenderDrawPoint(gRenderer, x++ + camera.x, y + camera.y);
+      if (i % 400 == 0) {
         x = 0;
         ++y;
+        int hue = (y + offset) % 360;
+        // int hue = y % 360;
+        if (hue % 60 == 0)
+          ++hue;
+        Color cnew = hslToRgb(hue, 1, 0.5);
+        SDL_SetRenderDrawColor(gRenderer, cnew.r, cnew.g, cnew.b, 0);
       }
-      ++src;
     }
+
     SDL_RenderPresent(gRenderer);
+    ++offset;
   }
 
   close();

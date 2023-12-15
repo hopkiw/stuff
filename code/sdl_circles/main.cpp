@@ -3,7 +3,6 @@
 #include <time.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <gif_lib.h>
 
 #include <cstdlib>
 #include <iostream>
@@ -15,8 +14,8 @@
 
 using namespace std;
 
-const int SCREEN_WIDTH = 1000;
-const int SCREEN_HEIGHT = 480;
+const int SCREEN_WIDTH = 500;
+const int SCREEN_HEIGHT = 500;
 // const int WIDTH = 99;
 
 SDL_Window* gWindow = NULL;
@@ -97,6 +96,10 @@ vector<int> getneighbors(int idx, int width, int length) {
   return res;
 }
 
+struct Circle {
+  int x, y, r;
+};
+
 int main(int argc, char* args[]) {
   if (!init()) {
     printf("Failed to initialize!\n");
@@ -106,28 +109,13 @@ int main(int argc, char* args[]) {
 
   SDL_Event e;
 
-  // Camera camera = {0, 0, 11};
   Camera camera = {};
 
-  int fh = open("/home/cc/7sd.gif", O_RDONLY);
-  if (fh == -1) {
-    perror("error opening input gif");
-    return 1;
-  }
-
-  int err;
-  GifFileType *gif = DGifOpenFileHandle(fh, &err);
-  if (DGifSlurp(gif) != GIF_OK) {
-    cout << "GIF_ERR" << endl;
-    return 1;
-  }
-  close(fh);
-
-  SDL_Log("Loaded GIF %dx%d", gif->SWidth, gif->SHeight);
-
   int click_x = 0, click_y = 0;
+  bool click = false;
 
-  bool fill = false;
+  vector<Circle> circles;
+  int timesince = 0;
   while (!quit) {
     // time_t start = clock();
     while (SDL_PollEvent(&e) != 0) {
@@ -152,60 +140,60 @@ int main(int argc, char* args[]) {
             case 'l' :
               camera.x += 10;
               break;
+            case 'n' :
+              click = true;
+              break;
+          }
+          break;
+        case SDL_MOUSEMOTION:
+          if (e.motion.state & SDL_BUTTON_LMASK) {
+            click_x = e.motion.x - camera.x;
+            click_y = e.motion.y - camera.y;
           }
           break;
         case SDL_MOUSEBUTTONDOWN:
           if (e.button.button == SDL_BUTTON_LEFT) {
+            // click = true;
             click_x = e.button.x - camera.x;
             click_y = e.button.y - camera.y;
-            fill = true;
             SDL_Log("clicked (%d,%d)", click_x, click_y);
           }
           break;
-      }
-    }
-
-    if (fill == true) {
-      fill = false;
-      int idx = (click_y * gif->SWidth) + click_x;
-      int pixelcount = gif->SWidth * gif->SHeight;
-      int replace = *(gif->SavedImages->RasterBits + idx);
-
-      set<int> pixels;
-      pixels.insert(idx);
-      while (pixels.size() != 0) {
-        auto it = pixels.begin();
-        if (gif->SavedImages->RasterBits[*it] == 0) {
+        case SDL_MOUSEBUTTONUP:
+          //if (e.button.button == SDL_BUTTON_LEFT)
+          //  click = false;
           break;
-        }
-        gif->SavedImages->RasterBits[*it] = 0;
-
-        vector<int> neighbors = getneighbors(*it, gif->SWidth, pixelcount);
-        for (auto i : neighbors) {
-          if (gif->SavedImages->RasterBits[i] == replace)
-            pixels.insert(i);
-        }
-        pixels.erase(it);
       }
     }
+
+
+    if (timesince == 0 && click == true) {
+      for (int i = 0; i < 3; ++i) {
+        // click = false;
+        Circle c {100, 100, 25 + i};
+        circles.push_back(c);
+        Circle c2 {400, 100, 25 + i};
+        circles.push_back(c2);
+      }
+    }
+    timesince = (timesince + 1) % 50;
 
     // Non-white background
     SDL_SetRenderDrawColor(gRenderer, 0xBA, 0xBA, 0xBA, 0xBA);
     SDL_RenderClear(gRenderer);
 
-    GifByteType* src = gif->SavedImages->RasterBits;
-    int x = 0, y = 0;
-    int pixels = gif->SWidth * gif->SHeight;
-    for (int i = 0; i < pixels; ++i) {
-      GifColorType color = gif->SColorMap->Colors[*src];
-      SDL_SetRenderDrawColor(gRenderer, color.Red, color.Green, color.Blue, 0);
-      SDL_RenderDrawPoint(gRenderer, ++x + camera.x, y + camera.y);
-      if (i > 0 && (i % gif->SWidth == 0)) {
-        x = 0;
-        ++y;
+    SDL_SetRenderDrawColor(gRenderer, 0xFF, 0, 0, 0);
+    for (vector<Circle>::iterator it = circles.begin(); it != circles.end(); ++it) {
+      for (int i = 0; i < 1440; i++) {
+        float rad = i * ((2 * 3.14159) / 1440);
+        int x = it->r * cos(rad);
+        int y = it->r * sin(rad);
+
+        SDL_RenderDrawPoint(gRenderer, x + it->x, y + it->y);
       }
-      ++src;
+      ++it->r;
     }
+
     SDL_RenderPresent(gRenderer);
   }
 
@@ -213,3 +201,40 @@ int main(int argc, char* args[]) {
 
   return 0;
 }
+
+/*
+    Displacement
+    Base
+    Base + Index
+    Base + Displacement
+    Base + Index + Displacement
+    Base + (Index * Scale)
+    (Index * Scale) + Displacement
+    Base + (Index * Scale) + Displacement
+
+    --
+
+    Displacement (absolute value)
+    e.g.: mov ax,[0xff] or mov [lbl],bx.
+
+    Base (register)
+    e.g.: mov ax,[bx]. absolute address in register.
+
+    Base + Index
+    e.g.: mov [ax+bx],cx. address is sum of registers.
+
+    Base + Displacement
+    e.g.: mov bx,[ax+0xcafe]. address is sum of register and value
+
+    Base + Index + Displacement
+    e.g.: mov bx,[ax+cx+0xcafe]
+
+    Base + (Index * Scale)
+    e.g.: mov ax,[di+8*si]
+
+    (Index * Scale) + Displacement
+    e.g.:
+
+    Base + (Index * Scale) + Displacement
+
+*/

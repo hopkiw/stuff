@@ -83,8 +83,8 @@ bool init() {
     printf("Window could not be created! SDL Error: %s\n", SDL_GetError());
     success = false;
   } else {
-    gRenderer = SDL_CreateRenderer(gWindow, -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    gRenderer = SDL_CreateRenderer(gWindow, -1, SDL_RENDERER_ACCELERATED);
+        // SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (gRenderer == NULL) {
       printf("Renderer could not be created! SDL Error: %s\n",
           SDL_GetError());
@@ -127,6 +127,7 @@ vector<int> parse_map(vector<string> lines) {
   return res;
 }
 
+/*
 void save(vector<int> map) {
   ofstream myfile;
   myfile.open("example.txt");
@@ -143,6 +144,7 @@ void save(vector<int> map) {
 
   return;
 }
+*/
 
 struct Camera {
   int x;

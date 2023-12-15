@@ -1,5 +1,7 @@
 #include <SDL2/SDL.h>
 #include <stdio.h>
+#include <time.h>
+
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
@@ -12,7 +14,7 @@ using namespace std;
 
 const int SCREEN_WIDTH = 1000;
 const int SCREEN_HEIGHT = 480;
-const int WIDTH = 99;
+int WIDTH = 0;
 
 struct Color {
   int r, g, b;
@@ -84,7 +86,7 @@ bool init() {
     success = false;
   } else {
     gRenderer = SDL_CreateRenderer(gWindow, -1, SDL_RENDERER_ACCELERATED);
-        //SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+        // SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (gRenderer == NULL) {
       printf("Renderer could not be created! SDL Error: %s\n",
           SDL_GetError());
@@ -174,6 +176,7 @@ int main(int argc, char* args[]) {
     cout << "Error opening map file\n";
     return 1;
   }
+  WIDTH = map[0].size();
 
   vector<string> mapv(begin(map), end(map));
   vector<int> realmap = parse_map(mapv);
@@ -214,6 +217,7 @@ int main(int argc, char* args[]) {
   bool next = false;
   // unsigned long maxWall = 0, maxMaze = 0;
   while (!quit) {
+    time_t start = clock();
     while (SDL_PollEvent(&e) != 0) {
       switch (e.type) {
         case SDL_QUIT:
@@ -390,6 +394,12 @@ int main(int argc, char* args[]) {
     for (auto tile : tiles) {
       tile.render();
     }
+    time_t end = clock();
+    float res = static_cast<float>(end - start) / CLOCKS_PER_SEC;
+    SDL_Log("that took %fs before", res);
+    end = clock();
+    res = static_cast<float>(end - start) / CLOCKS_PER_SEC;
+    SDL_Log("and %fs after", res);
     SDL_RenderPresent(gRenderer);
 
     // debug
@@ -422,5 +432,5 @@ int main(int argc, char* args[]) {
 
 // TODO(Liam):
 //
-// generate maps in this form
 // visualize A* pathing algorithm
+// visualize 'rewind' pathing algorithm
