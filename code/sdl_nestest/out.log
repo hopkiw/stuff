@@ -1,0 +1,2 @@
+NESHeader: 1x16kB ROM 1x8kB VROM [H-mirror] NTSC using mapper 0x0
+start at: 0x4010
