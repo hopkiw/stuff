@@ -8,7 +8,15 @@ jobs:
   giphy:
     runs-on: ubuntu-latest
     steps:
-    - uses: mkramb/giphy-action@v1
+    - name: Generate a token
+      id: generate-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ vars.APP_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        
+    - name: giphy-action
+      uses: mkramb/giphy-action@v1
       with:
         giphy-secret: ${{ secrets.GIPHY_API_SECRET }}
-        github-secret: ${{ secrets.GITHUB_TOKEN }}
+        github-secret: ${{ steps.generate-token.outputs.token }}
