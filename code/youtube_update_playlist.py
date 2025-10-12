@@ -11,30 +11,33 @@ scopes = ['https://www.googleapis.com/auth/youtube.force-ssl']
 client_secrets_file = 'client_secret.json'
 
 
-def create_playlist(ytclient, title):
-    return ytclient.playlists().insert(
-        part='snippet',
-        body={
-            'snippet': {
-                'title': title
-            }
-        }
-    ).execute()
+class YTClient:
+    def __init__(self, credentials):
+        self.client = googleapiclient.discovery.build('youtube', 'v3', credentials=credentials))
 
-
-def add_playlist_item(ytclient, playlist_id, video_id):
-    return youtube.playlistItems().insert(
-        part='snippet',
-        body={
-            'snippet': {
-                'playlistId': playlist_id,
-                'resourceId': {
-                    'kind': 'youtube#video',
-                    'videoId': url
+    def create_playlist(self, title):
+        return self.client.playlists().insert(
+            part='snippet',
+            body={
+                'snippet': {
+                    'title': title
                 }
             }
-        }
-    ).execute()
+        ).execute()
+
+    def add_playlist_item(self, playlist_id, video_id):
+        return self.client.playlistItems().insert(
+            part='snippet',
+            body={
+                'snippet': {
+                    'playlistId': playlist_id,
+                    'resourceId': {
+                        'kind': 'youtube#video',
+                        'videoId': url
+                    }
+                }
+            }
+        ).execute()
 
 
 def main():
@@ -49,9 +52,9 @@ def main():
     flow = InstalledAppFlow.from_client_secrets_file(client_secrets_file, scopes)
     credentials = flow.run_local_server(port=0)
 
-    ytclient = googleapiclient.discovery.build('youtube', 'v3', credentials=credentials)
+    ytclient = YTClient(
     if args.title:
-        res = create_playlist(ytclient, title)
+        res = ytclient.create_playlist(title)
         if res.get('kind') == 'youtube#playlist':
             playlist_id = res.get('id')
         else:
@@ -64,7 +67,7 @@ def main():
         video_ids = fh.read().splitlines()
 
     for video_id in video_ids:
-        print(add_playlist_item(ytclient, video_id))
+        print(ytclient.add_playlist_item(playlist_id, video_id))
 
 
 if __name__ == '__main__':
