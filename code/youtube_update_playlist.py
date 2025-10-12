@@ -43,11 +43,10 @@ class YTClient:
 def main():
     parser = argparse.ArgumentParser()
     grp = parser.add_mutually_exclusive_group(required=True)
-    grp.add_argument('--title')
-    grp.add_argument('--playlist-id')
-    parser.add_argument('urls')
+    grp.add_argument('--title', help='the title to use for a new playlist')
+    grp.add_argument('--playlist-id', help='the ID of an existing playlist')
+    parser.add_argument('urls', help='a file of youtube video IDs')
     args = parser.parse_args()
-
 
     # Get credentials and create an API client
     flow = InstalledAppFlow.from_client_secrets_file(client_secrets_file, scopes)
