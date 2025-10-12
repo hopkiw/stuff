@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import arparse
+import argparse
 import sys
 
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -13,7 +13,7 @@ client_secrets_file = 'client_secret.json'
 
 class YTClient:
     def __init__(self, credentials):
-        self.client = googleapiclient.discovery.build('youtube', 'v3', credentials=credentials))
+        self.client = googleapiclient.discovery.build('youtube', 'v3', credentials=credentials)
 
     def create_playlist(self, title):
         return self.client.playlists().insert(
@@ -45,6 +45,7 @@ def main():
     grp = parser.add_mutually_exclusive_group(required=True)
     grp.add_argument('--title')
     grp.add_argument('--playlist-id')
+    parser.add_argument('urls')
     args = parser.parse_args()
 
 
@@ -52,7 +53,8 @@ def main():
     flow = InstalledAppFlow.from_client_secrets_file(client_secrets_file, scopes)
     credentials = flow.run_local_server(port=0)
 
-    ytclient = YTClient(
+    ytclient = YTClient(credentials)
+
     if args.title:
         res = ytclient.create_playlist(title)
         if res.get('kind') == 'youtube#playlist':
@@ -63,7 +65,7 @@ def main():
     else:
         playlist_id = args.playlist_id
 
-    with open('urls', 'r') as fh:
+    with open(args.urls, 'r') as fh:
         video_ids = fh.read().splitlines()
 
     for video_id in video_ids:
