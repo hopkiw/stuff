@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import sys
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 import googleapiclient.discovery
@@ -33,7 +32,7 @@ class YTClient:
                     'playlistId': playlist_id,
                     'resourceId': {
                         'kind': 'youtube#video',
-                        'videoId': url
+                        'videoId': video_id,
                     }
                 }
             }
@@ -55,7 +54,7 @@ def main():
     ytclient = YTClient(credentials)
 
     if args.title:
-        res = ytclient.create_playlist(title)
+        res = ytclient.create_playlist(args.title)
         if res.get('kind') == 'youtube#playlist':
             playlist_id = res.get('id')
         else:
@@ -72,4 +71,4 @@ def main():
 
 
 if __name__ == '__main__':
-  main()
+    main()
