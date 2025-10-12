@@ -49,7 +49,8 @@ class EmbyBrowser:
         items = get_items(parent_id)
         body = []
         for item in items['Items']:
-            button = urwid.Text(item['Name'])
+            button = urwid.Button(item['Name'])
+            urwid.connect_signal(button, 'click', self.show_items, item['Id'])
             body.append(urwid.AttrMap(button, None, focus_map='reversed'))
 
         self.listbox = urwid.ListBox(urwid.SimpleFocusListWalker(body))
