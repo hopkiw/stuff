@@ -1,6 +1,0 @@
-#!/bin/bash
-
-file="$1"
-echo tags:
-grep "^$file," ~/filetags.txt | cut -d, -f2-
-# addtags >&2  # stdout is for tags
