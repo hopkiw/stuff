@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 
-# dmenu -l 10 -p 'Choose: ' -fn inconsolata:size=22 -nb black -nf white -w 0x120014d
+# TODO: image_path should be whole path or not
+# TODO: get image by ANY tag (loop over bind to create IN (?, ?, ...))
 
 
 import argparse
@@ -58,7 +59,7 @@ class TagDB:
 
     def add_image(self, image_path, image_hash):
         cur = self.con.cursor()
-        cur.execute( 'INSERT OR IGNORE INTO images (image_path, image_hash) VALUES (?, ?)',
+        cur.execute('INSERT OR IGNORE INTO images (image_path, image_hash) VALUES (?, ?)',
                     (image_path, image_hash))
         self.con.commit()
 
@@ -114,6 +115,28 @@ class TagDB:
 
         return [entry[0] for entry in res.fetchall()]
 
+    def get_images_all_tags(self, tags):
+        cur = self.con.cursor()
+        sql = """
+              SELECT image_path
+              FROM images i
+              """
+
+        for i, tag in enumerate(tags, 1):
+            sql += f"""
+              INNER JOIN (
+                  SELECT image_id
+                  FROM imagetags it
+                  JOIN tags t
+                  ON t.id = it.tag_id
+                  WHERE tag = ?
+                ) t{i}
+              ON i.id = t{i}.image_id
+              """
+        res = cur.execute(sql, tuple(tags))
+
+        return [entry[0] for entry in res.fetchall()]
+
 
 def getmd5sum(path):
     with open(path, 'rb') as fh:
@@ -141,12 +164,12 @@ def main():
     grp2.add_argument("--path")
     grp2.add_argument("--file")
 
-    parser.add_argument("--tag")
+    parser.add_argument("--tag", nargs='+')
     args = parser.parse_args()
 
+    db = TagDB()
+
     if args.get_all_tags:
-        db = TagDB()
-        print('getting all tags:')
         for tag in db.get_all_tags():
             print(tag)
 
@@ -157,17 +180,26 @@ def main():
             print('--get requires --tag or --path')
             return
 
-        db = TagDB()
-
         if args.tag:
-            tag_id = db.get_tag(args.tag)
-            print(f'images tagged "{args.tag}":', db.get_images_by_tag(tag_id))
-            return 1
+            if len(args.tag) == 1:
+                tag_id = db.get_tag(args.tag)
+                print(f'images tagged "{args.tag}":')
+                for image in db.get_images_by_tag(tag_id):
+                    print(image)
+            else:
+                print(f'images with tags: {args.tag}')
+                for image in db.get_images_all_tags(args.tag):
+                    print(image)
+
+            return 0
 
         if args.path:
             image_id = db.get_image_by_path(args.path)
-            print(f'tags for file "{args.path}":', db.get_tags_by_image(image_id))
-            return 1
+            print(f'tags for file "{args.path}":')
+            for tag in db.get_tags_by_image(image_id):
+                print(tag)
+
+            return 0
 
     if args.add:
         if not args.tag:
@@ -184,8 +216,6 @@ def main():
 
         else:
             paths = [args.path]
-
-        db = TagDB()
 
         db.add_tag(args.tag)
         tag_id = db.get_tag(args.tag)
