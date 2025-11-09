@@ -1,10 +1,12 @@
 // Copyright 2025 gwriterk
+
 #include <stdio.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
 #include <unistd.h>
 #include <stdlib.h>
+
 #include <ctime>
 #include <string>
 #include <iostream>
@@ -17,7 +19,6 @@ const int SCREEN_WIDTH = 750;
 const int SCREEN_HEIGHT = 600;
 
 bool init();
-bool loadMedia();
 void close();
 
 SDL_Window* gWindow = NULL;
@@ -26,7 +27,7 @@ TTF_Font* gFont = NULL;
 
 class Block {
  public:
-  Block();
+  explicit Block(float);
   Block(int, int, SDL_Color);
 
   bool Draw();
@@ -38,15 +39,18 @@ class Block {
 };
 
 SDL_Color colors[] = {
-  SDL_Color{0xFF, 0x0, 0x0},
-  SDL_Color{0x0, 0xFF, 0x0},
-  SDL_Color{0x0, 0x0, 0xFF},
+  SDL_Color{0xFF, 0x0, 0x0, 0xFF},
+  SDL_Color{0x0, 0xFF, 0x0, 0xFF},
+  SDL_Color{0x0, 0x0, 0xFF, 0xFF},
 };
 
-Block::Block() :
+Block::Block(float vel) :
   rect{SCREEN_WIDTH, static_cast<int>(lrand48() % SCREEN_HEIGHT), TILEWIDTH, TILEWIDTH},
   color{colors[lrand48() % 3]},
-  vel_x{((lrand48() % 4) + 5) / 100.0f} { }
+  vel_x{vel} {
+    std::cout << "new block with speed" << vel << std::endl;
+  }
+  // vel_x{((lrand48() % 4) + 5) / 100.0f} { }
 
 Block::Block(int x, int y, SDL_Color color_) :
   rect{x, y, TILEWIDTH, TILEWIDTH},
@@ -58,7 +62,7 @@ bool Block::Draw() {
       std::cerr << "SDL_RenderDrawRect failed: " << SDL_GetError() << std::endl;
       return false;
   }
-  SDL_SetRenderDrawColor(gRenderer, 0xFF, 0x0, 0x0, 0xFF);
+  SDL_SetRenderDrawColor(gRenderer, color.r, color.g, color.b, color.a);
   rc = SDL_RenderFillRect(gRenderer, &rect);
   if (rc != 0) {
       std::cerr << "SDL_RenderFillRect failed: " << SDL_GetError() << std::endl;
@@ -70,39 +74,64 @@ bool Block::Draw() {
 
 class Slider {
  public:
-  Slider(int, int, int);
+  Slider(std::string, int, int, int);
+  Slider(std::string, int, int, int, int);
+  Slider(std::string, int, int, int, int, int);
 
   bool Draw();
-  void SetFill(int);
-  int GetFill();
+  void SetVal(int);
+  unsigned int GetVal();
   void SetClicked(bool);
   bool GetClicked();
 
   SDL_Rect rect;
 
  private:
-  int fill;
+  std::string label;
+  int val;
+  int max = 100;
+  int min = 0;
   bool clicked = false;
 };
 
-Slider::Slider(int x, int y, int fill_) : rect{x, y, 190, 20}, fill{fill_} {
-  std::cout << "new slider" << std::endl;
+Slider::Slider(std::string label_, int x, int y, int val_) :
+  rect{x, y, 190, 20},
+  label{label_},
+  val{val_} {
+}
+
+Slider::Slider(std::string label_, int x, int y, int val_, int max_) :
+  rect{x, y, 190, 20},
+  label{label_},
+  val{val_},
+  max{max_} {
+}
+
+Slider::Slider(std::string label_, int x, int y, int val_, int min_, int max_) :
+  rect{x, y, 190, 20},
+  label{label_},
+  val{val_},
+  max{max_},
+  min{min_} {
 }
 
 bool Slider::Draw() {
-      // slider form
+      // outline
       SDL_SetRenderDrawColor(gRenderer, 0, 0, 0, 0xFF);  // black
       SDL_RenderDrawRect(gRenderer, &rect);
 
-      // slider fillbar
-      // int pixels = fill * rect.w;
+      // fillbar
       SDL_SetRenderDrawColor(gRenderer, 0, 0xFF, 0, 0xFF);  // green
-      SDL_Rect fillRect = {rect.x, rect.y, (fill * rect.w) / 100, rect.h};
+
+      float pct = static_cast<float>(val - min) / static_cast<float>(max - min);
+      int pixels = pct * rect.w;
+
+      SDL_Rect fillRect = {rect.x, rect.y, pixels, rect.h};
       SDL_RenderFillRect(gRenderer, &fillRect);
 
-      // slider text
+      // val text
       SDL_Color textColor = {0, 0, 0, 0xFF};
-      SDL_Surface* mySurface = TTF_RenderText_Solid(gFont, std::to_string(fill).c_str(), textColor);
+      SDL_Surface* mySurface = TTF_RenderText_Solid(gFont, std::to_string(val).c_str(), textColor);
       if (mySurface == NULL) {
         return false;
       }
@@ -118,23 +147,40 @@ bool Slider::Draw() {
 
       SDL_RenderCopy(gRenderer, myTexture, NULL, &textRect);
 
+      // label text
+      mySurface = TTF_RenderText_Solid(gFont, label.c_str(), textColor);
+      if (mySurface == NULL) {
+        return false;
+      }
+
+      myTexture = SDL_CreateTextureFromSurface(gRenderer, mySurface);
+
+      textRect = {
+        rect.x + rect.w + 40,
+        rect.y,
+        mySurface->w,
+        mySurface->h,
+      };
+
+      SDL_RenderCopy(gRenderer, myTexture, NULL, &textRect);
+
       return true;
 }
 
-void Slider::SetFill(int fill_) {
-  fill = fill_;
+void Slider::SetVal(int val_) {
+  val = val_;
 
-  if (fill > 100)
-    fill = 100;
+  if (val > max)
+    val = max;
 
-  if (fill < 0)
-    fill = 0;
+  if (val < min)
+    val = min;
 
-  std::cout << "set fill to " << fill << std::endl;
+  std::cout << "set val to " << val << std::endl;
 }
 
-int Slider::GetFill() {
-  return fill;
+unsigned int Slider::GetVal() {
+  return val;
 }
 
 void Slider::SetClicked(bool clicked_) {
@@ -189,7 +235,7 @@ void close() {
     SDL_Quit();
 }
 
-int main(int argc, char* args[]) {
+int main() {
     Uint16 stime = time(NULL);
     seed48(&stime);
 
@@ -198,11 +244,14 @@ int main(int argc, char* args[]) {
       return 1;
     }
 
-    Slider speedSlider = {20, 20, 0};
-    Slider createChanceSlider = {20, 50, 0};
+    // TODO: need min and max speed and within a predefined range
+    Slider speedSlider = {"block speed", 20, 20, 4, 4, 9};
+    Slider createChanceSlider = {"create rate", 20, 50, 75, 75, 95};
+    Slider maxBlocksSlider = {"max blocks", 20, 80, 5, 100};
+    Slider timeBetweenBlocksSlider = {"time between blocks", 20, 110, 200, 800};
 
-    // std::vector<Slider*> sliders = {&speedSlider, &createChanceSlider};
-    std::vector<Slider*> sliders = {&speedSlider};
+    std::vector<Slider*> sliders = {&speedSlider, &createChanceSlider, &maxBlocksSlider,
+      &timeBetweenBlocksSlider};
 
     int cat_original_y = SCREEN_HEIGHT / 2;
     Block cat = {SCREEN_WIDTH / 2, cat_original_y, SDL_Color{0x3, 0xFC, 0x7F, 0xFF}};
@@ -247,7 +296,7 @@ int main(int argc, char* args[]) {
             for (auto s : sliders) {
               if (s->GetClicked() == true) {
                 std::cout << "adding to fill" << std::endl;
-                s->SetFill(s->GetFill() + e.motion.xrel);
+                s->SetVal(s->GetVal() + e.motion.xrel);
               }
             }
             break;
@@ -260,16 +309,21 @@ int main(int argc, char* args[]) {
       float delta = (currentTicks - lastTicks);
 
       int chance = lrand48() % 100;
-      if ((chance > 75) && ((currentTicks - lastCreatedTime) > 200) && (blocks.size() < 3)) {
-        Block block;
+      if (
+          (chance > 75) &&
+          ((currentTicks - lastCreatedTime) > 200) &&
+          (blocks.size() < maxBlocksSlider.GetVal())) {
+        float speed = speedSlider.GetVal() / 10.0f;
+        // vel_x{((lrand48() % 4) + 5) / 100.0f} { }
+        Block block {speed};
         blocks.push_back(block);
         lastCreatedTime = currentTicks;
-        std::cout << "new block" << std::endl;
       }
 
       int deleted = 0;
       for (auto it = blocks.begin(); it != blocks.end();) {
         int diff = it->vel_x * delta;
+        std::cout << "delta " << delta << " says move block " << diff << " pixels" << std::endl;
         if (diff > 0)
           it->rect.x -= diff;
 
@@ -316,4 +370,3 @@ int main(int argc, char* args[]) {
 
     return 0;
 }
-
