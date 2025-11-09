@@ -49,8 +49,7 @@ Block::Block(float vel) :
   color{colors[lrand48() % 3]},
   vel_x{vel} {
     std::cout << "new block with speed" << vel << std::endl;
-  }
-  // vel_x{((lrand48() % 4) + 5) / 100.0f} { }
+}
 
 Block::Block(int x, int y, SDL_Color color_) :
   rect{x, y, TILEWIDTH, TILEWIDTH},
