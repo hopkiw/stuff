@@ -47,9 +47,7 @@ SDL_Color colors[] = {
 Block::Block(float vel) :
   rect{SCREEN_WIDTH, static_cast<int>(lrand48() % SCREEN_HEIGHT), TILEWIDTH, TILEWIDTH},
   color{colors[lrand48() % 3]},
-  vel_x{vel} {
-    std::cout << "new block with speed" << vel << std::endl;
-}
+  vel_x{vel} { }
 
 Block::Block(int x, int y, SDL_Color color_) :
   rect{x, y, TILEWIDTH, TILEWIDTH},
@@ -176,7 +174,6 @@ void Slider::SetVal(int val_) {
   if (val < min)
     val = min;
 
-  std::cout << "set val to " << val << std::endl;
 }
 
 unsigned int Slider::GetVal() {
@@ -184,7 +181,6 @@ unsigned int Slider::GetVal() {
 }
 
 void Slider::SetClicked(int x) {
-  std::cout << "clicked: " << x << std::endl;
   clicked = true;
   float offset = x - rect.x;
   float ratio = offset / rect.w;
@@ -252,8 +248,8 @@ int main() {
     }
 
     // TODO: need min and max speed and within a predefined range
-    Slider speedSlider = {"block speed", 20, 20, 4, 4, 9};
-    Slider createChanceSlider = {"create rate", 20, 50, 75, 75, 95};
+    Slider speedSlider = {"block speed", 20, 20, 4, 1, 13};
+    Slider createChanceSlider = {"create rate", 20, 50, 75, 75, 99};
     Slider maxBlocksSlider = {"max blocks", 20, 80, 5, 100};
     Slider timeBetweenBlocksSlider = {"time between blocks", 20, 110, 200, 800};
 
@@ -302,7 +298,6 @@ int main() {
           case SDL_MOUSEMOTION:
             for (auto s : sliders) {
               if (s->GetClicked() == true) {
-                std::cout << "adding to fill" << std::endl;
                 s->SetClicked(e.motion.x);
               }
             }
@@ -321,7 +316,6 @@ int main() {
           ((currentTicks - lastCreatedTime) > 200) &&
           (blocks.size() < maxBlocksSlider.GetVal())) {
         float speed = speedSlider.GetVal() / 10.0f;
-        // vel_x{((lrand48() % 4) + 5) / 100.0f} { }
         Block block {speed};
         blocks.push_back(block);
         lastCreatedTime = currentTicks;
@@ -330,7 +324,6 @@ int main() {
       int deleted = 0;
       for (auto it = blocks.begin(); it != blocks.end();) {
         int diff = it->vel_x * delta;
-        std::cout << "delta " << delta << " says move block " << diff << " pixels" << std::endl;
         if (diff > 0)
           it->rect.x -= diff;
 
@@ -341,9 +334,6 @@ int main() {
             it++;
         }
       }
-
-      if (deleted)
-        std::cout << "deleted " << deleted << " blocks, now there are " << blocks.size() << std::endl;
 
       // cat motion
       if (cat.vel_y) {
