@@ -80,8 +80,9 @@ class Slider {
   bool Draw();
   void SetVal(int);
   unsigned int GetVal();
-  void SetClicked(bool);
+  void SetClicked(int);
   bool GetClicked();
+  void SetUnclicked();
 
   SDL_Rect rect;
 
@@ -169,11 +170,13 @@ bool Slider::Draw() {
 void Slider::SetVal(int val_) {
   val = val_;
 
+  /*
   if (val > max)
     val = max;
 
   if (val < min)
     val = min;
+    */
 
   std::cout << "set val to " << val << std::endl;
 }
@@ -182,13 +185,20 @@ unsigned int Slider::GetVal() {
   return val;
 }
 
-void Slider::SetClicked(bool clicked_) {
-  std::cout << "clicked: " << clicked_ << std::endl;
-  clicked = clicked_;
+void Slider::SetClicked(int x) {
+  std::cout << "clicked: " << x << std::endl;
+  clicked = true;
+  float offset = x - rect.x;
+  float ratio = offset / rect.w;
+  val = (ratio * (max - min)) + min;
 }
 
 bool Slider::GetClicked() {
   return clicked;
+}
+
+void Slider::SetUnclicked() {
+  clicked = false;
 }
 
 bool init() {
@@ -279,7 +289,7 @@ int main() {
               SDL_Point p = {e.button.x, e.button.y};
               for (auto s : sliders) {
                 if (SDL_PointInRect(&p, &s->rect)) {
-                  s->SetClicked(true);
+                  s->SetClicked(p.x);
                 }
               }
             }
@@ -287,7 +297,7 @@ int main() {
           case SDL_MOUSEBUTTONUP:
             for (auto s : sliders) {
               if (s->GetClicked()) {
-                s->SetClicked(false);
+                s->SetUnclicked();
               }
             }
             break;
@@ -295,7 +305,7 @@ int main() {
             for (auto s : sliders) {
               if (s->GetClicked() == true) {
                 std::cout << "adding to fill" << std::endl;
-                s->SetVal(s->GetVal() + e.motion.xrel);
+                s->SetClicked(e.motion.x);
               }
             }
             break;
@@ -307,6 +317,7 @@ int main() {
       Uint32 currentTicks = SDL_GetTicks();
       float delta = (currentTicks - lastTicks);
 
+      /*
       int chance = lrand48() % 100;
       if (
           (chance > 75) &&
@@ -336,6 +347,7 @@ int main() {
 
       if (deleted)
         std::cout << "deleted " << deleted << " blocks, now there are " << blocks.size() << std::endl;
+      */
 
       // cat motion
       if (cat.vel_y) {
