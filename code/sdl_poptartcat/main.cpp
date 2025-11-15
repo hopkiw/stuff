@@ -170,13 +170,11 @@ bool Slider::Draw() {
 void Slider::SetVal(int val_) {
   val = val_;
 
-  /*
   if (val > max)
     val = max;
 
   if (val < min)
     val = min;
-    */
 
   std::cout << "set val to " << val << std::endl;
 }
@@ -190,7 +188,7 @@ void Slider::SetClicked(int x) {
   clicked = true;
   float offset = x - rect.x;
   float ratio = offset / rect.w;
-  val = (ratio * (max - min)) + min;
+  SetVal((ratio * (max - min)) + min);
 }
 
 bool Slider::GetClicked() {
@@ -317,7 +315,6 @@ int main() {
       Uint32 currentTicks = SDL_GetTicks();
       float delta = (currentTicks - lastTicks);
 
-      /*
       int chance = lrand48() % 100;
       if (
           (chance > 75) &&
@@ -347,7 +344,6 @@ int main() {
 
       if (deleted)
         std::cout << "deleted " << deleted << " blocks, now there are " << blocks.size() << std::endl;
-      */
 
       // cat motion
       if (cat.vel_y) {
