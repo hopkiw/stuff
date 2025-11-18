@@ -82,10 +82,13 @@ class Card {
 
   void Draw(SDL_Renderer*);
   // void Draw(SDL_Renderer*, SDL_Rect* dst);
-  bool HasIntersection(SDL_Rect* dst);
-  bool HasIntersection(const Card&);
+  bool HasIntersection(SDL_Rect* dst) const;
+  bool HasIntersection(const Card&) const;
   void Move(int, int);
   void RelMove(int, int);
+  bool Visible() const;
+  void SetVisible();
+  void SetVisible(bool);
 
   CardValue value;
   CardSuit suit;
@@ -94,6 +97,7 @@ class Card {
   SDL_Rect src;
   SDL_Rect dst;
   SDL_Texture* texture;
+  bool visible = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const Card& card) {
@@ -121,11 +125,11 @@ void Card::Draw(SDL_Renderer* renderer, SDL_Rect* dst_) {
 }
 */
 
-bool Card::HasIntersection(SDL_Rect* target) {
+bool Card::HasIntersection(SDL_Rect* target) const {
   return (SDL_HasIntersection(&dst, target) == SDL_TRUE);
 }
 
-bool Card::HasIntersection(const Card& card) {
+bool Card::HasIntersection(const Card& card) const {
   return (SDL_HasIntersection(&dst, &card.dst) == SDL_TRUE);
 }
 
@@ -139,6 +143,18 @@ void Card::Move(int x, int y) {
 void Card::RelMove(int x, int y) {
   dst.x += x;
   dst.y += y;
+}
+
+bool Card::Visible() const {
+  return visible;
+}
+
+void Card::SetVisible() {
+  visible = true;
+}
+
+void Card::SetVisible(bool newvis) {
+  visible = newvis;
 }
 
 bool init() {
@@ -175,6 +191,9 @@ void close() {
 }
 
 bool isStackValid(const Card* first, const Card* second) {
+  if (!(second->Visible()))
+    return false;
+
   bool validSuit = true, validValue = true;
 
   if (first->suit == second->suit)
@@ -212,11 +231,11 @@ int main() {
   /*
    * 52 sprites, arranged in tileset:
    *
-   *     A 2 3 4 5 6 7 8 9 J Q K
-   *  ♥  . . . . . . . . . . . .
-   *  ⋄  . . . . . . . . . . . .
-   *  ♣  . . . . . . . . . . . .
-   *  ♠  . . . . . . . . . . . .
+   *     A 2 3 4 5 6 7 8 9 J Q K J
+   *  ♥  . . . . . . . . . . . . .
+   *  ⋄  . . . . . . . . . . . . .
+   *  ♣  . . . . . . . . . . . . .
+   *  ♠  . . . . . . . . . . . . .
    *
    * 11px left border
    * 23px gap
@@ -268,13 +287,15 @@ int main() {
   }
 
   std::vector<Card> deck;
+  std::vector<Card> discards;
   std::vector<Card> stacks[7];
   std::vector<Card> foundations[4];
   std::vector<Card> draggedCards;
+  Card blankCard = allcards[27];
 
-  for (int i = 0; i < 52; ++i) {
+  for (size_t i = 0; i < allcards.size(); ++i) {
     if (((i+1) % 14) == 0)
-      ++i;
+      continue;
     deck.push_back(allcards[i]);
   }
 
@@ -282,13 +303,16 @@ int main() {
 
   for (int i = 0; i < 7; ++i) {
     for (int j = 0; j < (i+1); ++j) {
-      stacks[i].push_back(deck.back());
-      deck.pop_back();
+      if (i == j)
+        deck.front().SetVisible();
+      stacks[i].push_back(deck.front());
+      std::cout << "card " << deck.front() << "in stack " << i + 1 << std::endl;
+      deck.erase(deck.begin());
     }
   }
 
   SDL_Rect deckRect = {650, 20, TILEWIDTH * 2, TILEHEIGHT * 2};
-  // SDL_Rect discardRect = {630, 20, TILEWIDTH * 2, TILEHEIGHT * 2};;
+  SDL_Rect discardRect = {560, 20, TILEWIDTH * 2, TILEHEIGHT * 2};;
   SDL_Rect foundationRects[4];
   SDL_Rect stackRects[7];
 
@@ -305,7 +329,6 @@ int main() {
   int idx = 0;
   int srcStack = -1;
 
-//  int count = 0;
   while (!quit) {
     // time_t start = clock();
     while (SDL_PollEvent(&e) != 0) {
@@ -345,25 +368,48 @@ int main() {
 
             SDL_Rect r = {e.button.x, e.button.y, 1, 1};
 
-            if (deck.size() != 0) {
-              Card* card = &deck[0];
-              if (card->HasIntersection(&r)) {
-                std::cout << "clicked on card " << *card << std::endl;
+            // Discard pile click
+            if (discards.size() != 0) {
+              Card* card = &discards[0];
+              if (SDL_HasIntersection(&r, &discardRect) == SDL_TRUE) {
+                std::cout << "clicked on discard pile card: " << *card << std::endl;
                 draggedCards.insert(draggedCards.begin(), *card);
-                // deck.pop_back();
-                deck.erase(deck.begin());
+                discards.erase(discards.begin());
                 goto downbreaklabel;
               }
             }
 
+            // Deck click
+            if (SDL_HasIntersection(&r, &deckRect) == SDL_TRUE) {
+              if (deck.size() != 0) {
+                Card* card = &deck[0];
+                std::cout << "clicked on deck, adding card " << *card << " to discard pile" << std::endl;
+                card->SetVisible();
+                discards.insert(discards.begin(), *card);
+                deck.erase(deck.begin());
+                goto downbreaklabel;
+              } else {
+                std::cout << "move discards to deck!" << std::endl;
+                deck.insert(deck.begin(), discards.rbegin(), discards.rend());
+                discards.clear();
+                for (auto it = deck.begin(); it != deck.end(); ++it)
+                  it->SetVisible(false);
+              }
+            }
+
+            // Tableau click
             for (int i = 0; i < 7; ++i) {
+              std::cout << "first card in stack " << i << " is card " << stacks[i].back() << std::endl;
               for (auto rit = stacks[i].rbegin(); rit != stacks[i].rend(); ++rit) {
                 if (rit != stacks[i].rbegin() && !isStackValid(&(*rit), &*(rit - 1))) {
+                  std::cout << "invalid card " << *rit << " in stack " << i << std::endl;
                   break;
                 }
 
                 if (rit->HasIntersection(&r)) {
-                  // draggedCards = std::vector<Card>(std::next(rit).base(), stacks[i].end());
+                  if (!(rit->Visible())) {
+                    rit->SetVisible();
+                  }
                   draggedCards.insert(draggedCards.begin(), std::next(rit).base(), stacks[i].end());
                   stacks[i].erase(std::next(rit).base(), stacks[i].end());
                   srcStack = i;
@@ -393,7 +439,8 @@ downbreaklabel:
                       srcStack = -1;
                       goto upbreaklabel;
                     }
-                    if (foundations[i].size() && isFoundationValid(&foundations[i].back(), &draggedCards.back())) {
+                    if (foundations[i].size() &&
+                        isFoundationValid(&foundations[i].back(), &draggedCards.back())) {
                       std::cout << "ok, move card " << draggedCards.back() << " onto foundation " << i
                         << std::endl;
                       foundations[i].insert(foundations[i].end(), draggedCards.back());
@@ -425,7 +472,7 @@ downbreaklabel:
                 stacks[srcStack].insert(stacks[srcStack].end(), draggedCards.begin(), draggedCards.end());
                 srcStack = -1;
               } else {
-                deck.insert(deck.begin(), draggedCards.begin(), draggedCards.end());
+                discards.insert(discards.begin(), draggedCards.begin(), draggedCards.end());
               }
 
               draggedCards.clear();
@@ -452,11 +499,16 @@ upbreaklabel:
     }
 
     // Draw deck
+    SDL_RenderDrawRect(gRenderer, &discardRect);
     SDL_RenderDrawRect(gRenderer, &deckRect);
-    if (deck.size()) {
-      Card* top = &deck[0];
-      top->Move(deckRect.x, deckRect.y);
+    if (discards.size()) {
+      Card* top = &discards[0];
+      top->Move(discardRect.x, discardRect.y);
       top->Draw(gRenderer);
+    }
+    if (deck.size()) {
+      blankCard.Move(deckRect.x, deckRect.y);
+      blankCard.Draw(gRenderer);
     }
 
     // Draw tableau of stacks
@@ -464,7 +516,12 @@ upbreaklabel:
       int y = 0;
       for (auto it = stacks[i].begin(); it != stacks[i].end(); ++it, ++y) {
         it->Move(stackRects[i].x, stackRects[i].y + (y * 35));
-        it->Draw(gRenderer);
+        if (it->Visible()) {
+          it->Draw(gRenderer);
+        } else {
+          blankCard.Move(stackRects[i].x, stackRects[i].y + (y * 35));
+          blankCard.Draw(gRenderer);
+        }
       }
     }
 
@@ -481,7 +538,6 @@ upbreaklabel:
   return 0;
 }
 
-// TODO: flipped cards (use JOKER of HEARTS)
 // TODO: break up into classes
 // TODO: investigate using vectors of pointers
 // TODO: add double-click
