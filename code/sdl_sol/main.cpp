@@ -336,6 +336,7 @@ int main() {
         case SDL_MOUSEBUTTONDOWN:
           if (e.button.button == SDL_BUTTON_LEFT) {
             /*
+             * Does this belong to buttondown or buttonup?
             auto ticks = SDL_GetTicks();
             if ((ticks - lastClicked) < 300)
               std::cout << "double-click!" << std::endl;
@@ -344,26 +345,38 @@ int main() {
 
             SDL_Rect r = {e.button.x, e.button.y, 1, 1};
 
+            if (deck.size() != 0) {
+              Card* card = &deck[0];
+              if (card->HasIntersection(&r)) {
+                std::cout << "clicked on card " << *card << std::endl;
+                draggedCards.insert(draggedCards.begin(), *card);
+                // deck.pop_back();
+                deck.erase(deck.begin());
+                goto downbreaklabel;
+              }
+            }
+
             for (int i = 0; i < 7; ++i) {
               for (auto rit = stacks[i].rbegin(); rit != stacks[i].rend(); ++rit) {
-                if (rit != stacks[i].rbegin() && !isStackValid(&(*rit), &(*(rit - 1)))) {
+                if (rit != stacks[i].rbegin() && !isStackValid(&(*rit), &*(rit - 1))) {
                   break;
                 }
 
                 if (rit->HasIntersection(&r)) {
-                  draggedCards = std::vector<Card>(std::next(rit).base(), stacks[i].end());
+                  // draggedCards = std::vector<Card>(std::next(rit).base(), stacks[i].end());
+                  draggedCards.insert(draggedCards.begin(), std::next(rit).base(), stacks[i].end());
                   stacks[i].erase(std::next(rit).base(), stacks[i].end());
                   srcStack = i;
                   std::cout << "clicked on card(s) ";
                   for (auto ccard : draggedCards)
                     std::cout << ccard;
                   std::cout << std::endl;
-                  goto label;
+                  goto downbreaklabel;
                 }
               }
             }
           }
-label:
+downbreaklabel:
           break;
         case SDL_MOUSEBUTTONUP:
           if (e.button.button == SDL_BUTTON_LEFT) {
@@ -371,15 +384,14 @@ label:
               if (draggedCards.size() == 1) {
                 // check foundations
                 for (int i = 0; i < 4; ++i) {
-                  SDL_Rect empty = { i * 90 + 20, 20, TILEWIDTH * 2, TILEHEIGHT * 2};
-                  if (draggedCards.size() > 0 && draggedCards.back().HasIntersection(&empty)) {
+                  if (draggedCards.back().HasIntersection(&foundationRects[i])) {
                     if (foundations[i].empty() && draggedCards.back().value == ACE) {
                       std::cout << "ok, move card " << draggedCards.back() << " to empty foundation " << i
                         << std::endl;
                       foundations[i].insert(foundations[i].end(), draggedCards.back());
                       draggedCards.clear();
                       srcStack = -1;
-                      break;
+                      goto upbreaklabel;
                     }
                     if (foundations[i].size() && isFoundationValid(&foundations[i].back(), &draggedCards.back())) {
                       std::cout << "ok, move card " << draggedCards.back() << " onto foundation " << i
@@ -387,11 +399,12 @@ label:
                       foundations[i].insert(foundations[i].end(), draggedCards.back());
                       draggedCards.clear();
                       srcStack = -1;
-                      break;
+                      goto upbreaklabel;
                     }
                   }
                 }
               }
+
               auto dragcard = draggedCards.begin();
               for (int i = 0; i < 7; ++i) {
                 if (stacks[i].size()) {
@@ -407,13 +420,18 @@ label:
                   }
                 }
               }
+
               if (srcStack >= 0) {
                 stacks[srcStack].insert(stacks[srcStack].end(), draggedCards.begin(), draggedCards.end());
-                draggedCards.clear();
                 srcStack = -1;
+              } else {
+                deck.insert(deck.begin(), draggedCards.begin(), draggedCards.end());
               }
+
+              draggedCards.clear();
             }
           }
+upbreaklabel:
           break;
       }
     }
@@ -436,9 +454,9 @@ label:
     // Draw deck
     SDL_RenderDrawRect(gRenderer, &deckRect);
     if (deck.size()) {
-      Card top = deck[0];
-      top.Move(deckRect.x, deckRect.y);
-      top.Draw(gRenderer);
+      Card* top = &deck[0];
+      top->Move(deckRect.x, deckRect.y);
+      top->Draw(gRenderer);
     }
 
     // Draw tableau of stacks
@@ -462,3 +480,9 @@ label:
 
   return 0;
 }
+
+// TODO: flipped cards (use JOKER of HEARTS)
+// TODO: break up into classes
+// TODO: investigate using vectors of pointers
+// TODO: add double-click
+// TODO: add win condition
