@@ -2,7 +2,9 @@
 #include "tetris.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_ttf.h>
 
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <utility>
@@ -30,6 +32,7 @@ std::ostream& operator<<(std::ostream& os, const SDL_Point& p) {
 namespace tetris {
 
 // TODO(hopkiw): refactor so all game logic uses COLxROW
+// TODO(hopkiw): remove SDL references
 
 const int SCREEN_WIDTH = 600;
 const int SCREEN_HEIGHT = 480;
@@ -143,52 +146,29 @@ Shape Block::AddToLines(SDL_Point p, const Shape& lines) const {
     return copy;
 }
 
-bool Block::GetCollisionX(SDL_Point p, const Shape& lines) const {
-    size_t shaperows = shape.size(), shapecols = shape[0].size();
-    auto offset = getOffset();
-
-    for (size_t shaperow = 0; shaperow < shaperows; ++shaperow) {
-        if (shape[shaperow][0] == 0)
-            continue;
-        if ((p.x + offset.x) < 0)  // left wall
-            return true;
-        if (lines[shaperow][p.x + offset.x] == 1)  // another block left
-            return true;
-    }
-    for (size_t shaperow = 0; shaperow < shaperows; ++shaperow) {
-        size_t cols = shape[shaperow].size();
-        if (shape[shaperow][shapecols - 1] == 0)
-            continue;
-        if ((p.x + offset.x + cols) > lines[0].size())  // right wall
-            return true;
-        if (lines[shaperow][p.x + offset.x + shapecols] == 1)  // another block right
-            return true;
-    }
-
-    return false;
-}
-
 bool Block::GetCollision(SDL_Point p, const Shape& lines) const {
     size_t shaperows = shape.size(), shapecols = shape[0].size();
     auto offset = getOffset();
 
-    for (size_t shapecol = 0; shapecol < shapecols; ++shapecol) {
-        for (size_t shaperow_ = shaperows; shaperow_ > 0; --shaperow_) {
-            auto shaperow = shaperow_ - 1;
-            if (shape[shaperow][shapecol] == 0) {
-                continue;  // continue to next row 'up'
-            }
+    for (size_t row = 0; row < shaperows; ++row) {
+        for (size_t col = 0; col < shapecols; ++col) {
+            if (shape[row][col] == 0)
+                continue;
 
-            if (shaperow + p.y + offset.y + 1 >= lines.size()) {
-                return true;
-            }
-
-            if (lines[shaperow + p.y + offset.y + 1][shapecol + p.x + offset.x] == 1)
+            if (static_cast<int>(p.x + offset.x + col) < 0)
                 return true;
 
-            break;  // stop checking this column if we found a value
+            if ((p.x + offset.x + col) >= lines[0].size())
+                return true;
+
+            if ((p.y + offset.y + row) >= lines.size())
+                return true;
+
+            if (lines[p.y + offset.y + row][p.x + offset.x + col] == 1)
+                return true;
         }
     }
+
     return false;
 }
 
@@ -215,6 +195,22 @@ void Block::Rotate() {
 }
 
 }  // namespace tetris
+
+void clearFilledLines(tetris::Shape* lines) {
+  int deleted = 0;
+  for (auto it = lines->begin(); it != lines->end();) {
+    int blocks = std::count_if(it->begin(), it->end(), [](auto a) { return a == 1; });
+
+    if (static_cast<size_t>(blocks) == it->size()) {
+      it = lines->erase(it);
+      ++deleted;
+    } else {
+      ++it;
+    }
+  }
+  for (int i = 0; i < deleted; ++i)
+    lines->insert(lines->begin(), std::vector<int>(10, 0));
+}
 
 int main() {
     srand(time(NULL));
@@ -267,6 +263,7 @@ int main() {
     SDL_Event e;
     bool quit = false;
     bool gameOver = false;
+    bool paused = false;
     while (!quit) {
         while (SDL_PollEvent(&e) != 0) {
             switch (e.type) {
@@ -281,17 +278,21 @@ int main() {
                             else
                                 quit = true;
                             break;
-                        case 's':
+                        case SDLK_SPACE:
+                            paused = !paused;
+                            break;
+                        case 'j':
+                        case 'k':
                             moveBlock.Rotate();
                             break;
                         case 'h':
-                            if (!moveBlock.GetCollisionX(
+                            if (!moveBlock.GetCollision(
                                         {moveBlockLocation.x - 1, moveBlockLocation.y},
                                         lines))
                                 --moveBlockLocation.x;
                             break;
                         case 'l':
-                            if (!moveBlock.GetCollisionX(
+                            if (!moveBlock.GetCollision(
                                         {moveBlockLocation.x + 1, moveBlockLocation.y},
                                         lines))
                                 ++moveBlockLocation.x;
@@ -301,21 +302,25 @@ int main() {
             }
         }
 
-        if (!gameOver) {
+        if (!gameOver && !paused) {
             currentTicks = SDL_GetTicks();
 
             if (currentTicks - lastMoveTicks > tetris::TIME_THRESHOLD) {
-              if (moveBlock.GetCollision(moveBlockLocation, lines)) {
-                  if (moveBlockLocation.y < 2)
-                      gameOver = true;
-                  lines = moveBlock.AddToLines(moveBlockLocation, lines);
-                  moveBlock = nextBlock;
-                  moveBlockLocation = spawnBlockLocation;
-                  nextBlock = blocks[rand() % 7];
-              } else {
-                  ++moveBlockLocation.y;
-              }
-              lastMoveTicks = currentTicks;
+                  if (moveBlock.GetCollision(
+                        {moveBlockLocation.x, moveBlockLocation.y + 1}, lines)) {
+                      if (moveBlockLocation.y < 2)
+                          gameOver = true;
+
+                      lines = moveBlock.AddToLines(moveBlockLocation, lines);
+                      clearFilledLines(&lines);
+
+                      moveBlock = nextBlock;
+                      moveBlockLocation = spawnBlockLocation;
+                      nextBlock = blocks[rand() % 7];
+                  } else {
+                      ++moveBlockLocation.y;
+                  }
+                  lastMoveTicks = currentTicks;
             }
         }
 
@@ -335,26 +340,25 @@ int main() {
                     tetris::BLOCK_SIZE
                 };
 
-                if (lines[row][col] == 0)
+                if (lines[row][col] == 0 || paused) {
                     SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-                else
+                } else {
                     SDL_SetRenderDrawColor(renderer, 0xA9, 0xA9, 0xA9, 0xFF);
-
-                SDL_RenderFillRect(renderer, &r);
-                SDL_SetRenderDrawColor(renderer, 0xA9, 0xA9, 0xA9, 0xFF);
-                SDL_RenderDrawRect(renderer, &r);
+                    SDL_RenderFillRect(renderer, &r);
+                    SDL_SetRenderDrawColor(renderer, 0xA9, 0xA9, 0xA9, 0xFF);
+                    SDL_RenderDrawRect(renderer, &r);
+                }
             }
         }
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xFF);
         SDL_RenderDrawRect(renderer, &playfield);
 
-        SDL_Point realMoveBlockLocation = {
-            playfield.x + moveBlockLocation.x * tetris::BLOCK_SIZE,
-            playfield.y + moveBlockLocation.y * tetris::BLOCK_SIZE
-        };
-
-        if (!gameOver) {
+        if (!gameOver && !paused) {
+            SDL_Point realMoveBlockLocation = {
+                playfield.x + moveBlockLocation.x * tetris::BLOCK_SIZE,
+                playfield.y + moveBlockLocation.y * tetris::BLOCK_SIZE
+            };
             moveBlock.Draw(renderer, realMoveBlockLocation);
             nextBlock.Draw(renderer, nextBlockLocation);
         }
