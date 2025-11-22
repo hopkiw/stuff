@@ -196,7 +196,7 @@ void Block::Rotate() {
 
 }  // namespace tetris
 
-void clearFilledLines(tetris::Shape* lines) {
+int clearFilledLines(tetris::Shape* lines) {
   int deleted = 0;
   for (auto it = lines->begin(); it != lines->end();) {
     int blocks = std::count_if(it->begin(), it->end(), [](auto a) { return a == 1; });
@@ -210,6 +210,8 @@ void clearFilledLines(tetris::Shape* lines) {
   }
   for (int i = 0; i < deleted; ++i)
     lines->insert(lines->begin(), std::vector<int>(10, 0));
+
+  return deleted;
 }
 
 int main() {
@@ -217,10 +219,11 @@ int main() {
 
     SDL_Window* win = NULL;
     SDL_Renderer* renderer = NULL;
+    TTF_Font* font = NULL;
 
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cout << "SDL could not initialize! SDL Error: " << SDL_GetError() << std::endl;
-        return false;
+        return 1;
     }
 
     win = SDL_CreateWindow(
@@ -228,13 +231,24 @@ int main() {
             SDL_WINDOW_SHOWN);
     if (win == NULL) {
         std::cout << "Window could not be created! SDL Error: " << SDL_GetError() << std::endl;
-        return false;
+        return 1;
     }
 
     renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (renderer == NULL) {
         std::cout << "Renderer could not be created! SDL Error: " << SDL_GetError() << std::endl;
-        return false;
+        return 1;
+    }
+
+    if (TTF_Init() == -1) {
+      std::cout << "SDL_ttf could not initialize. TTF Error: " << TTF_GetError() << std::endl;
+      return 1;
+    }
+
+    font = TTF_OpenFont("/usr/share/fonts/truetype/terminus/TerminusTTF-4.46.0.ttf", 20);
+    if (font == NULL) {
+        std::cout << "Font could not be created. TTF Error: " << TTF_GetError() << std::endl;
+        return 1;
     }
 
     const tetris::Block blocks[7] = {
@@ -259,6 +273,8 @@ int main() {
 
     auto currentTicks = SDL_GetTicks();
     auto lastMoveTicks = currentTicks;
+
+    int score = 0;
 
     SDL_Event e;
     bool quit = false;
@@ -312,7 +328,7 @@ int main() {
                           gameOver = true;
 
                       lines = moveBlock.AddToLines(moveBlockLocation, lines);
-                      clearFilledLines(&lines);
+                      score += clearFilledLines(&lines);
 
                       moveBlock = nextBlock;
                       moveBlockLocation = spawnBlockLocation;
@@ -331,24 +347,44 @@ int main() {
         SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
         SDL_RenderFillRect(renderer, &playfield);
 
-        for (int row = 0; row < 20; ++row) {
-            for (int col = 0; col < 10; ++col) {
-                SDL_Rect r = {
-                    playfield.x + col * tetris::BLOCK_SIZE,
-                    playfield.y + row * tetris::BLOCK_SIZE,
-                    tetris::BLOCK_SIZE,
-                    tetris::BLOCK_SIZE
-                };
+        if (!gameOver) {
+          for (int row = 0; row < 20; ++row) {
+              for (int col = 0; col < 10; ++col) {
+                  SDL_Rect r = {
+                      playfield.x + col * tetris::BLOCK_SIZE,
+                      playfield.y + row * tetris::BLOCK_SIZE,
+                      tetris::BLOCK_SIZE,
+                      tetris::BLOCK_SIZE
+                  };
 
-                if (lines[row][col] == 0 || paused) {
-                    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-                } else {
-                    SDL_SetRenderDrawColor(renderer, 0xA9, 0xA9, 0xA9, 0xFF);
-                    SDL_RenderFillRect(renderer, &r);
-                    SDL_SetRenderDrawColor(renderer, 0xA9, 0xA9, 0xA9, 0xFF);
-                    SDL_RenderDrawRect(renderer, &r);
-                }
-            }
+                  if (lines[row][col] == 0 || paused) {
+                      SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+                  } else {
+                      SDL_SetRenderDrawColor(renderer, 0xA9, 0xA9, 0xA9, 0xFF);
+                      SDL_RenderFillRect(renderer, &r);
+                      SDL_SetRenderDrawColor(renderer, 0xA9, 0xA9, 0xA9, 0xFF);
+                      SDL_RenderDrawRect(renderer, &r);
+                  }
+              }
+          }
+        } else {
+            // gray playfield
+            SDL_SetRenderDrawColor(renderer, 0xA9, 0xA9, 0xA9, 0xFF);
+            SDL_RenderFillRect(renderer, &playfield);
+
+            // game over message
+            SDL_Surface* textSurface = TTF_RenderText_Solid(font, "Game over", {0, 0, 0, 0xFF});
+            SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+            SDL_Rect r = {
+                playfield.x + (5 * tetris::BLOCK_SIZE) - (textSurface->w / 2),
+                playfield.y + (10 * tetris::BLOCK_SIZE) - textSurface->h,
+                textSurface->w,
+                textSurface->h
+            };
+
+            SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+            SDL_RenderFillRect(renderer, &r);
+            SDL_RenderCopy(renderer, textTexture, NULL, &r);
         }
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xFF);
@@ -361,6 +397,41 @@ int main() {
             };
             moveBlock.Draw(renderer, realMoveBlockLocation);
             nextBlock.Draw(renderer, nextBlockLocation);
+
+            SDL_Surface* textSurface = TTF_RenderText_Solid(font, "Next block:", {0, 0, 0, 0xFF});
+            SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+            SDL_Rect r = {nextBlockLocation.x - 50, nextBlockLocation.y - 50, textSurface->w, textSurface->h};
+            SDL_RenderCopy(renderer, textTexture, NULL, &r);
+        }
+
+        {
+          SDL_Surface* tSurface = TTF_RenderText_Solid(font, "Lines :", {0, 0, 0, 0xFF});
+          SDL_Texture* tTexture = SDL_CreateTextureFromSurface(renderer, tSurface);
+          SDL_Rect r = {nextBlockLocation.x - 50, nextBlockLocation.y - 110, tSurface->w, tSurface->h};
+          SDL_RenderCopy(renderer, tTexture, NULL, &r);
+
+          r.x = r.x + tSurface->w + 5;
+          tSurface = TTF_RenderText_Solid(font, std::to_string(score).c_str(), {0, 0, 0, 0xFF});
+          tTexture = SDL_CreateTextureFromSurface(renderer, tSurface);
+          r.w = tSurface->w;
+          r.h = tSurface->h;
+          SDL_RenderCopy(renderer, tTexture, NULL, &r);
+        }
+
+        if (paused) {
+            // pause message
+            SDL_Surface* textSurface = TTF_RenderText_Solid(font, "Paused", {0, 0, 0, 0xFF});
+            SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+            SDL_Rect r = {
+                playfield.x + (5 * tetris::BLOCK_SIZE) - (textSurface->w / 2),
+                playfield.y + (10 * tetris::BLOCK_SIZE) - textSurface->h,
+                textSurface->w,
+                textSurface->h
+            };
+
+            SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+            SDL_RenderFillRect(renderer, &r);
+            SDL_RenderCopy(renderer, textTexture, NULL, &r);
         }
 
         SDL_RenderPresent(renderer);
