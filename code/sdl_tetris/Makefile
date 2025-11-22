@@ -1,8 +1,8 @@
-CXXFLAGS=-Wall -Wextra -Werror -std=c++17 -O3
+CXXFLAGS=-Wall -Wextra -Werror -std=c++17 -O0
 default: run
 
 run: tetris
 	./tetris
 
-tetris: main.cpp
-	g++ ${CXXFLAGS} -g main.cpp -o $@ -lSDL2 -lSDL2_image -lSDL2_ttf
+tetris: tetris.cpp
+	g++ ${CXXFLAGS} -g $^ -o $@ -lSDL2 -lSDL2_image -lSDL2_ttf
