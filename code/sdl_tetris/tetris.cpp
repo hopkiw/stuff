@@ -94,7 +94,7 @@ Point Block::GetOffset() const {
     return Point{xoffset, yoffset};
 }
 
-Shape Block::AddToLines(Point p, const Shape& lines) const {
+Shape Block::AddToLines(Point p, const Shape& lines, int color) const {
     auto offset = GetOffset();
     auto copy = lines;
     size_t shaperows = shape.size(), shapecols = shape[0].size();
@@ -106,7 +106,7 @@ Shape Block::AddToLines(Point p, const Shape& lines) const {
                 if (rowidx < 0)
                     continue;  // don't draw off screen!
 
-                copy[rowidx][colidx] = 1;
+                copy[rowidx][colidx] = color;
             }
         }
     }
@@ -134,7 +134,7 @@ bool Block::GetCollision(Point p, const Shape& lines) const {
             if ((p.y + offset.y + row) >= lines.size())
                 return true;
 
-            if (lines[p.y + offset.y + row][p.x + offset.x + col] == 1)
+            if (lines[p.y + offset.y + row][p.x + offset.x + col] != 0)
                 return true;
         }
     }
@@ -166,19 +166,12 @@ void Block::Rotate() {
 
 }  // namespace tetris
 
-typedef struct Color {
-    unsigned char r;
-    unsigned char g;
-    unsigned char b;
-    unsigned char a;
-} Color;
-
-const Color ColorCyan   {0x00, 0xFF, 0xFF, 0xFF};
-const Color ColorRed    {0xFF, 0x00, 0x00, 0xFF};
-const Color ColorPurple {0x80, 0x00, 0x80, 0xFF};
-const Color ColorGreen  {0x00, 0xFF, 0x00, 0xFF};
-const Color ColorBlue   {0x00, 0x00, 0xFF, 0xFF};
-const Color ColorYellow {0xFF, 0xFF, 0x00, 0xFF};
+const SDL_Color ColorCyan   {0x00, 0xFF, 0xFF, 0xFF};
+const SDL_Color ColorRed    {0xFF, 0x00, 0x00, 0xFF};
+const SDL_Color ColorPurple {0x80, 0x00, 0x80, 0xFF};
+const SDL_Color ColorGreen  {0x00, 0xFF, 0x00, 0xFF};
+const SDL_Color ColorBlue   {0x00, 0x00, 0xFF, 0xFF};
+const SDL_Color ColorYellow {0xFF, 0xFF, 0x00, 0xFF};
 
 const int SCREEN_WIDTH = 600;
 const int SCREEN_HEIGHT = 480;
@@ -309,19 +302,30 @@ int main() {
         return 1;
     }
 
+
+    std::vector<SDL_Color> colors = {
+        ColorGreen,
+        ColorCyan,
+        ColorRed,
+        ColorYellow,
+        ColorRed,
+        ColorBlue,
+        ColorPurple,
+    };
+
     typedef struct colorBlock {
         tetris::Block block;
-        Color color;
+        int color;
     } colorBlock;
 
     std::vector<colorBlock> blocks = {
-        colorBlock{tetris::LBlock, ColorGreen},
-        colorBlock{tetris::IBlock, ColorCyan},
-        colorBlock{tetris::SBlock, ColorRed},
-        colorBlock{tetris::TBlock, ColorYellow},
-        colorBlock{tetris::Square, ColorRed},
-        colorBlock{tetris::JBlock, ColorBlue},
-        colorBlock{tetris::ZBlock, ColorPurple},
+        colorBlock{tetris::LBlock, 0},
+        colorBlock{tetris::IBlock, 1},
+        colorBlock{tetris::SBlock, 2},
+        colorBlock{tetris::TBlock, 3},
+        colorBlock{tetris::Square, 2},
+        colorBlock{tetris::JBlock, 4},
+        colorBlock{tetris::ZBlock, 5},
     };
 
     SDL_Color bgColor{0xBA, 0xBA, 0xBA, 0xFF};
@@ -446,7 +450,7 @@ int main() {
                         if (moveBlockLocation.y < 2)
                             gameOver = true;
 
-                        lines = moveBlock.block.AddToLines(moveBlockLocation, lines);
+                        lines = moveBlock.block.AddToLines(moveBlockLocation, lines, moveBlock.color);
                         score += clearFilledLines(&lines);
 
                         moveBlock = nextBlock;
@@ -486,7 +490,8 @@ int main() {
                     if (lines[row][col] == 0 || paused) {
                         SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
                     } else {
-                        SDL_SetRenderDrawColor(renderer, someColor.r, someColor.g, someColor.b, someColor.a);
+                        auto color = colors[lines[row][col]];
+                        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
                         SDL_RenderFillRect(renderer, &r);
                         SDL_RenderDrawRect(renderer, &r);
                     }
@@ -514,14 +519,15 @@ int main() {
 
         if (!gameOver && !paused) {
             DrawBlock(renderer, moveBlock.block,
-                {moveBlock.color.r, moveBlock.color.g, moveBlock.color.b, moveBlock.color.a},
+                colors[moveBlock.color],
                 {
                     playfield.x + moveBlockLocation.x * BLOCK_SIZE,
                     playfield.y + moveBlockLocation.y * BLOCK_SIZE,
                 });
 
+            auto nextBlockColor = colors[nextBlock.color];
             DrawBlock(renderer, nextBlock.block,
-                {nextBlock.color.r, nextBlock.color.g, nextBlock.color.b, nextBlock.color.a},
+                {nextBlockColor.r, nextBlockColor.g, nextBlockColor.b, nextBlockColor.a},
                 nextBlockLocation);
 
             Label nextblockmessage = {"Next block:", {
