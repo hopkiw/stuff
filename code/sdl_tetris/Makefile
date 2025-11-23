@@ -5,4 +5,4 @@ run: tetris
 	./tetris
 
 tetris: tetris.cpp
-	g++ ${CXXFLAGS} -g $^ -o $@ -lSDL2 -lSDL2_image -lSDL2_ttf
+	g++ ${CXXFLAGS} -g $^ -o $@ -lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer

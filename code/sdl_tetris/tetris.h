@@ -2,9 +2,6 @@
 #ifndef CODE_SDL_TETRIS_TETRIS_H_
 #define CODE_SDL_TETRIS_TETRIS_H_
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-
 #include <iostream>
 #include <string>
 #include <vector>
@@ -13,28 +10,40 @@ namespace tetris {
 
 typedef std::vector<std::vector<int>> Shape;
 
+typedef struct Point {
+    int x;
+    int y;
+} Point;
+
+typedef struct Color {
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+    unsigned char a;
+} Color;
+
 class Block {
  public:
-    Block(const std::string& name_, SDL_Color color_, Shape shape_) :
-      name{name_},
-      color{color_},
-      orig{shape_},
-      shape{shape_} { }
+     Block(const std::string& name_, Color color_, Shape shape_) :
+         name{name_},
+         color{color_},
+         orig{shape_},
+         shape{shape_} { }
 
-    Shape AddToLines(SDL_Point, const Shape&) const;
-    void Draw(SDL_Renderer*, const SDL_Point&) const;
-    void DrawText() const;
-    bool GetCollision(SDL_Point p, const Shape&) const;
-    bool GetCollisionX(SDL_Point p, const Shape&) const;
-    std::string GetName() const { return name; }
+    Shape AddToLines(Point, const Shape&) const;
+    // void Draw(SDL_Renderer*, const SDL_Point&) const;
+    Color GetColor() const { return color; }
+    Point GetOffset() const;
     Shape GetShape() const { return shape; }
+    std::string GetName() const { return name; }
+
+    bool GetCollision(Point p, const Shape&) const;
+    void DrawText() const;
     void Rotate();
 
  private:
-    SDL_Point getOffset() const;
-
     std::string name;
-    SDL_Color color;
+    Color color;
     Shape orig;
     Shape shape;
     int rotation = 0;
