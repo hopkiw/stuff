@@ -1,5 +1,5 @@
 // Copyright 2025 Liam Hopkins
-#include "tetris.h"
+#include "include/tetris.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
@@ -166,16 +166,30 @@ void Block::Rotate() {
 
 }  // namespace tetris
 
+typedef struct Color {
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+    unsigned char a;
+} Color;
+
+const Color ColorCyan   {0x00, 0xFF, 0xFF, 0xFF};
+const Color ColorRed    {0xFF, 0x00, 0x00, 0xFF};
+const Color ColorPurple {0x80, 0x00, 0x80, 0xFF};
+const Color ColorGreen  {0x00, 0xFF, 0x00, 0xFF};
+const Color ColorBlue   {0x00, 0x00, 0xFF, 0xFF};
+const Color ColorYellow {0xFF, 0xFF, 0x00, 0xFF};
+
 const int SCREEN_WIDTH = 600;
 const int SCREEN_HEIGHT = 480;
 
 const int BLOCK_SIZE = 20;
 const int TIME_THRESHOLD = 200;
 
-void Draw(SDL_Renderer* renderer, const tetris::Block& block, const tetris::Point& dst) {
+void DrawBlock(SDL_Renderer* renderer, const tetris::Block& block, const SDL_Color color,
+        const tetris::Point& dst) {
     auto offset = block.GetOffset();
     auto shape = block.GetShape();
-    auto color = block.GetColor();
 
     int y = 0;
     for (const auto& row : shape) {
@@ -249,16 +263,6 @@ int main() {
     TTF_Font* font = NULL;
     Mix_Music* music = NULL;
 
-    /*
-    //The music that will be played
-
-    //The sound effects that will be used
-    Mix_Chunk* gScratch = NULL;
-    Mix_Chunk* gHigh = NULL;
-    Mix_Chunk* gMedium = NULL;
-    Mix_Chunk* gLow = NULL;
-    */
-
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         std::cout << "SDL could not initialize! SDL Error: " << SDL_GetError() << std::endl;
         return 1;
@@ -282,7 +286,7 @@ int main() {
         return 1;
     }
 
-    font = TTF_OpenFont("/usr/share/fonts/truetype/terminus/TerminusTTF-4.46.0.ttf", 20);
+    font = TTF_OpenFont("assets/TerminusTTF-4.46.0.ttf", 20);
     if (font == NULL) {
         std::cout << "Font could not be created. TTF Error: " << TTF_GetError() << std::endl;
         return 1;
@@ -305,21 +309,29 @@ int main() {
         return 1;
     }
 
-    std::vector<tetris::Block> blocks = {
-        tetris::LBlock,
-        tetris::IBlock,
-        tetris::SBlock,
-        tetris::TBlock,
-        tetris::Square,
-        tetris::JBlock,
-        tetris::ZBlock
+    typedef struct colorBlock {
+        tetris::Block block;
+        Color color;
+    } colorBlock;
+
+    std::vector<colorBlock> blocks = {
+        colorBlock{tetris::LBlock, ColorGreen},
+        colorBlock{tetris::IBlock, ColorCyan},
+        colorBlock{tetris::SBlock, ColorRed},
+        colorBlock{tetris::TBlock, ColorYellow},
+        colorBlock{tetris::Square, ColorRed},
+        colorBlock{tetris::JBlock, ColorBlue},
+        colorBlock{tetris::ZBlock, ColorPurple},
     };
+
+    SDL_Color bgColor{0xBA, 0xBA, 0xBA, 0xFF};
+    SDL_Color someColor{0xA9, 0xA9, 0xA9, 0xFF};
 
     SDL_Rect playfield = {200, 20, 10 * BLOCK_SIZE, 20 * BLOCK_SIZE};
     tetris::Shape lines(20, std::vector<int>(10, 0));
 
-    tetris::Block moveBlock = blocks[rand() % blocks.size()];
-    tetris::Block nextBlock = blocks[rand() % blocks.size()];
+    colorBlock moveBlock = blocks[rand() % blocks.size()];
+    colorBlock nextBlock = blocks[rand() % blocks.size()];
 
     tetris::Point spawnBlockLocation = {5, 0};
     tetris::Point moveBlockLocation = spawnBlockLocation;
@@ -379,19 +391,19 @@ int main() {
                             break;
                         case 'k':
                             {
-                                auto copy = moveBlock;
+                                auto copy = moveBlock.block;
                                 copy.Rotate();
                                 if (!copy.GetCollision(moveBlockLocation, lines))
-                                    moveBlock.Rotate();
+                                    moveBlock.block.Rotate();
                             }
                             break;
                         case 'j':
-                            if (!moveBlock.GetCollision({moveBlockLocation.x - 1, moveBlockLocation.y},
+                            if (!moveBlock.block.GetCollision({moveBlockLocation.x - 1, moveBlockLocation.y},
                                 lines))
                                 --moveBlockLocation.x;
                             break;
                         case 'l':
-                            if (!moveBlock.GetCollision( {moveBlockLocation.x + 1, moveBlockLocation.y},
+                            if (!moveBlock.block.GetCollision({moveBlockLocation.x + 1, moveBlockLocation.y},
                                 lines))
                                 ++moveBlockLocation.x;
                             break;
@@ -420,7 +432,6 @@ int main() {
             if (!paused && !musicplaying) {
                 Mix_PlayMusic(music, -1);
                 Mix_VolumeMusic(0x20);
-                std::cout << "avg vol is: " << Mix_Volume(-1, -1) << std::endl;
             }
         }
 
@@ -430,12 +441,12 @@ int main() {
 
             do {
                 if (currentTicks - lastMoveTicks > TIME_THRESHOLD || drop) {
-                    if (moveBlock.GetCollision({moveBlockLocation.x, moveBlockLocation.y + 1}, lines)) {
+                    if (moveBlock.block.GetCollision({moveBlockLocation.x, moveBlockLocation.y + 1}, lines)) {
                         drop = false;
                         if (moveBlockLocation.y < 2)
                             gameOver = true;
 
-                        lines = moveBlock.AddToLines(moveBlockLocation, lines);
+                        lines = moveBlock.block.AddToLines(moveBlockLocation, lines);
                         score += clearFilledLines(&lines);
 
                         moveBlock = nextBlock;
@@ -449,8 +460,8 @@ int main() {
             } while (drop);
         }
 
-        // Non-white background
-        SDL_SetRenderDrawColor(renderer, 0xBA, 0xBA, 0xBA, 0xFF);
+        // Background
+        SDL_SetRenderDrawColor(renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
         SDL_RenderClear(renderer);
 
         // Playfield
@@ -461,6 +472,7 @@ int main() {
         for (auto label : labels)
             label.Draw(renderer, font);
 
+        // Tiles
         if (!gameOver) {
             for (int row = 0; row < 20; ++row) {
                 for (int col = 0; col < 10; ++col) {
@@ -474,15 +486,15 @@ int main() {
                     if (lines[row][col] == 0 || paused) {
                         SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
                     } else {
-                        SDL_SetRenderDrawColor(renderer, 0xA9, 0xA9, 0xA9, 0xFF);
+                        SDL_SetRenderDrawColor(renderer, someColor.r, someColor.g, someColor.b, someColor.a);
                         SDL_RenderFillRect(renderer, &r);
                         SDL_RenderDrawRect(renderer, &r);
                     }
                 }
             }
         } else {
-            // gray playfield
-            SDL_SetRenderDrawColor(renderer, 0xA9, 0xA9, 0xA9, 0xFF);
+            // Game over
+            SDL_SetRenderDrawColor(renderer, someColor.r, someColor.g, someColor.b, someColor.a);
             SDL_RenderFillRect(renderer, &playfield);
 
             SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
@@ -501,11 +513,16 @@ int main() {
         SDL_RenderDrawRect(renderer, &playfield);
 
         if (!gameOver && !paused) {
-            Draw(renderer, moveBlock, {
-                playfield.x + moveBlockLocation.x * BLOCK_SIZE,
-                playfield.y + moveBlockLocation.y * BLOCK_SIZE,
-            });
-            Draw(renderer, nextBlock, nextBlockLocation);
+            DrawBlock(renderer, moveBlock.block,
+                {moveBlock.color.r, moveBlock.color.g, moveBlock.color.b, moveBlock.color.a},
+                {
+                    playfield.x + moveBlockLocation.x * BLOCK_SIZE,
+                    playfield.y + moveBlockLocation.y * BLOCK_SIZE,
+                });
+
+            DrawBlock(renderer, nextBlock.block,
+                {nextBlock.color.r, nextBlock.color.g, nextBlock.color.b, nextBlock.color.a},
+                nextBlockLocation);
 
             Label nextblockmessage = {"Next block:", {
                 nextBlockLocation.x - 50,
