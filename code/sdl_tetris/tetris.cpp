@@ -1,5 +1,6 @@
 // Copyright 2025 Liam Hopkins
 #include "include/tetris.h"
+
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
@@ -95,6 +96,7 @@ Point Block::GetOffset() const {
 }
 
 Shape Block::AddToLines(Point p, const Shape& lines, int color) const {
+    std::cout << "adding a shape with color " << color << std::endl;
     auto offset = GetOffset();
     auto copy = lines;
     size_t shaperows = shape.size(), shapecols = shape[0].size();
@@ -103,8 +105,10 @@ Shape Block::AddToLines(Point p, const Shape& lines, int color) const {
             if (shape[shaperow][shapecol]) {
                 int rowidx = shaperow + p.y + offset.y;
                 int colidx = shapecol + p.x + offset.x;
-                if (rowidx < 0)
+                if (rowidx < 0) {
+                    std::cout << "skip blocks above screen" << std::endl;
                     continue;  // don't draw off screen!
+                }
 
                 copy[rowidx][colidx] = color;
             }
@@ -134,7 +138,7 @@ bool Block::GetCollision(Point p, const Shape& lines) const {
             if ((p.y + offset.y + row) >= lines.size())
                 return true;
 
-            if (lines[p.y + offset.y + row][p.x + offset.x + col] != 0)
+            if (lines[p.y + offset.y + row][p.x + offset.x + col] != -1)
                 return true;
         }
     }
@@ -164,8 +168,6 @@ void Block::Rotate() {
     shape = copy;
 }
 
-}  // namespace tetris
-
 const SDL_Color ColorCyan   {0x00, 0xFF, 0xFF, 0xFF};
 const SDL_Color ColorRed    {0xFF, 0x00, 0x00, 0xFF};
 const SDL_Color ColorPurple {0x80, 0x00, 0x80, 0xFF};
@@ -173,14 +175,8 @@ const SDL_Color ColorGreen  {0x00, 0xFF, 0x00, 0xFF};
 const SDL_Color ColorBlue   {0x00, 0x00, 0xFF, 0xFF};
 const SDL_Color ColorYellow {0xFF, 0xFF, 0x00, 0xFF};
 
-const int SCREEN_WIDTH = 600;
-const int SCREEN_HEIGHT = 480;
 
-const int BLOCK_SIZE = 20;
-const int TIME_THRESHOLD = 200;
-
-void DrawBlock(SDL_Renderer* renderer, const tetris::Block& block, const SDL_Color color,
-        const tetris::Point& dst) {
+void DrawBlock(SDL_Renderer* renderer, const Block& block, const SDL_Color color, const Point& dst) {
     auto offset = block.GetOffset();
     auto shape = block.GetShape();
 
@@ -207,7 +203,21 @@ void DrawBlock(SDL_Renderer* renderer, const tetris::Block& block, const SDL_Col
     }
 }
 
-int clearFilledLines(tetris::Shape* lines) {
+
+void Label::Draw(SDL_Renderer* renderer, TTF_Font* font) {
+    SDL_Surface* textSurface = TTF_RenderText_Solid(font, text.c_str(), {0, 0, 0, 0xFF});
+    SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    SDL_Rect r = {
+        p.x,
+        p.y,
+        textSurface->w,
+        textSurface->h
+    };
+    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+    SDL_RenderCopy(renderer, textTexture, NULL, &r);
+}
+
+int clearFilledLines(Shape* lines) {
     int deleted = 0;
     for (auto it = lines->begin(); it != lines->end();) {
         int blocks = std::count_if(it->begin(), it->end(), [](auto a) { return a == 1; });
@@ -225,85 +235,16 @@ int clearFilledLines(tetris::Shape* lines) {
     return deleted;
 }
 
-class Label {
- public:
-    Label(const std::string& text_, SDL_Point p_) : text{text_}, p{p_} {}
-    void Draw(SDL_Renderer*, TTF_Font*);
-
- private:
-    std::string text;
-    SDL_Point p;
-};
-
-void Label::Draw(SDL_Renderer* renderer, TTF_Font* font) {
-    SDL_Surface* textSurface = TTF_RenderText_Solid(font, text.c_str(), {0, 0, 0, 0xFF});
-    SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
-    SDL_Rect r = {
-        p.x,
-        p.y,
-        textSurface->w,
-        textSurface->h
-    };
-    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-    SDL_RenderCopy(renderer, textTexture, NULL, &r);
-}
-
-int main() {
-    srand(time(NULL));
-
-    SDL_Window* win = NULL;
-    SDL_Renderer* renderer = NULL;
-    TTF_Font* font = NULL;
-    Mix_Music* music = NULL;
-
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
-        std::cout << "SDL could not initialize! SDL Error: " << SDL_GetError() << std::endl;
-        return 1;
-    }
-
-    win = SDL_CreateWindow(
-        "", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-    if (win == NULL) {
-        std::cout << "Window could not be created! SDL Error: " << SDL_GetError() << std::endl;
-        return 1;
-    }
-
-    renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (renderer == NULL) {
-        std::cout << "Renderer could not be created! SDL Error: " << SDL_GetError() << std::endl;
-        return 1;
-    }
-
-    if (TTF_Init() == -1) {
-        std::cout << "SDL_ttf could not initialize. TTF Error: " << TTF_GetError() << std::endl;
-        return 1;
-    }
-
-    font = TTF_OpenFont("assets/TerminusTTF-4.46.0.ttf", 20);
-    if (font == NULL) {
-        std::cout << "Font could not be created. TTF Error: " << TTF_GetError() << std::endl;
-        return 1;
-    }
-
-    if (!(Mix_Init(MIX_INIT_MP3) & MIX_INIT_MP3)) {
-        std::cout << "SDL_mixer doesn't support MP3" << Mix_GetError() << std::endl;
-        return 1;
-    }
-
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-        std::cout << "SDL_mixer could not initialize! SDL_mixer Error: " << Mix_GetError() << std::endl;
-        return 1;
-    }
-
-    // '02 A-Type Music (version 1.1).mp3'  '03 B-Type Music.mp3'  '04 C-Type Music.mp3'
-    music = Mix_LoadMUS("assets/03 B-Type Music.mp3");
-    if (music == NULL) {
-        std::cout << "Failed to load beat music! SDL_mixer Error: " <<  Mix_GetError() << std::endl;;
-        return 1;
-    }
-
-
-    std::vector<SDL_Color> colors = {
+SDLTetris::SDLTetris() :
+    playfield{200, 20, 10 * BLOCK_SIZE, 20 * BLOCK_SIZE},
+    centerRect{
+        playfield.x + (5 * BLOCK_SIZE) - (30),
+        playfield.y + (10 * BLOCK_SIZE) - (20),
+        90,
+        20
+    },
+    lines{Shape(20, std::vector<int>(10, -1))},
+    colors{
         ColorGreen,
         ColorCyan,
         ColorRed,
@@ -311,69 +252,101 @@ int main() {
         ColorRed,
         ColorBlue,
         ColorPurple,
-    };
+    },
+    spawnBlockLocation{5, 0},
+    moveBlockLocation{spawnBlockLocation},
+    nextBlockLocation{SCREEN_WIDTH - 100, 18 * BLOCK_SIZE} {
+}
 
-    typedef struct colorBlock {
-        tetris::Block block;
-        int color;
-    } colorBlock;
+bool SDLTetris::Init() {
+    if (init)
+        return true;
 
-    std::vector<colorBlock> blocks = {
-        colorBlock{tetris::LBlock, 0},
-        colorBlock{tetris::IBlock, 1},
-        colorBlock{tetris::SBlock, 2},
-        colorBlock{tetris::TBlock, 3},
-        colorBlock{tetris::Square, 2},
-        colorBlock{tetris::JBlock, 4},
-        colorBlock{tetris::ZBlock, 5},
-    };
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+        std::cout << "SDL could not initialize! SDL Error: " << SDL_GetError() << std::endl;
+        return false;
+    }
 
-    SDL_Color bgColor{0xBA, 0xBA, 0xBA, 0xFF};
-    SDL_Color someColor{0xA9, 0xA9, 0xA9, 0xFF};
+    win = SDL_CreateWindow(
+        "", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    if (win == NULL) {
+        std::cout << "Window could not be created! SDL Error: " << SDL_GetError() << std::endl;
+        return false;
+    }
 
-    SDL_Rect playfield = {200, 20, 10 * BLOCK_SIZE, 20 * BLOCK_SIZE};
-    tetris::Shape lines(20, std::vector<int>(10, 0));
+    renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (renderer == NULL) {
+        std::cout << "Renderer could not be created! SDL Error: " << SDL_GetError() << std::endl;
+        return false;
+    }
 
-    colorBlock moveBlock = blocks[rand() % blocks.size()];
-    colorBlock nextBlock = blocks[rand() % blocks.size()];
+    if (TTF_Init() == -1) {
+        std::cout << "SDL_ttf could not initialize. TTF Error: " << TTF_GetError() << std::endl;
+        return false;
+    }
 
-    tetris::Point spawnBlockLocation = {5, 0};
-    tetris::Point moveBlockLocation = spawnBlockLocation;
-    tetris::Point nextBlockLocation = {SCREEN_WIDTH - 100, 18 * BLOCK_SIZE};
+    font = TTF_OpenFont("assets/TerminusTTF-4.46.0.ttf", 20);
+    if (font == NULL) {
+        std::cout << "Font could not be created. TTF Error: " << TTF_GetError() << std::endl;
+        return false;
+    }
 
-    std::vector<Label> labels = {
-        {"njkl to move", {20, 20}},
-        {"spacebar to pause", {20, 40}},
-        {"q to quit", {20, 60}},
-    };
+    if (!(Mix_Init(MIX_INIT_MP3) & MIX_INIT_MP3)) {
+        std::cout << "SDL_mixer doesn't support MP3" << Mix_GetError() << std::endl;
+        return false;
+    }
 
-    Label pausedmessage = {"Paused", {
-        playfield.x + (5 * BLOCK_SIZE) - (30),
-        playfield.y + (10 * BLOCK_SIZE) - (20),
-    }};
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        std::cout << "SDL_mixer could not initialize! SDL_mixer Error: " << Mix_GetError() << std::endl;
+        return false;
+    }
 
-    // game over message
-    SDL_Rect centerRect = {
-        playfield.x + (5 * BLOCK_SIZE) - (30),
-        playfield.y + (10 * BLOCK_SIZE) - (20),
-        90,
-        20
-    };
+    // '02 A-Type Music (version 1.1).mp3'  '03 B-Type Music.mp3'  '04 C-Type Music.mp3'
+    music = Mix_LoadMUS("assets/03 B-Type Music.mp3");
+    if (music == NULL) {
+        std::cout << "Failed to load beat music! SDL_mixer Error: " <<  Mix_GetError() << std::endl;;
+        return false;
+    }
 
-    Label gameovermessage = {"Game over", {centerRect.x - 20, centerRect.y}};
+    return init = true;
+}
 
-    auto currentTicks = SDL_GetTicks();
-    auto lastMoveTicks = currentTicks;
+bool SDLTetris::Rotate(Block* block) {
+    auto copy = *block;
+    copy.Rotate();
+    if (copy.GetCollision(moveBlockLocation, lines))
+        return false;
 
-    int score = 0;
+    block->Rotate();
+    return true;
+}
 
+bool SDLTetris::MoveDown(const Block& block) {
+    if (block.GetCollision({moveBlockLocation.x, moveBlockLocation.y + 1}, lines))
+        return false;
+
+    ++moveBlockLocation.y;
+    return true;
+}
+
+bool SDLTetris::MoveLeft(const Block& block) {
+    if (block.GetCollision({moveBlockLocation.x - 1, moveBlockLocation.y}, lines))
+        return false;
+
+    --moveBlockLocation.x;
+    return true;
+}
+
+bool SDLTetris::MoveRight(const Block& block) {
+    if (block.GetCollision({moveBlockLocation.x + 1, moveBlockLocation.y}, lines))
+        return false;
+
+    ++moveBlockLocation.x;
+    return true;
+}
+
+void SDLTetris::handleEvents(Block& block) {
     SDL_Event e;
-    bool quit = false;
-    bool gameOver = false;
-    bool paused = false;
-    bool drop = false;
-
-    while (!quit) {
         while (SDL_PollEvent(&e) != 0) {
             switch (e.type) {
                 case SDL_QUIT:
@@ -394,22 +367,13 @@ int main() {
                                 paused = !paused;
                             break;
                         case 'k':
-                            {
-                                auto copy = moveBlock.block;
-                                copy.Rotate();
-                                if (!copy.GetCollision(moveBlockLocation, lines))
-                                    moveBlock.block.Rotate();
-                            }
+                            Rotate(&block);
                             break;
                         case 'j':
-                            if (!moveBlock.block.GetCollision({moveBlockLocation.x - 1, moveBlockLocation.y},
-                                lines))
-                                --moveBlockLocation.x;
+                            MoveLeft(block);
                             break;
                         case 'l':
-                            if (!moveBlock.block.GetCollision({moveBlockLocation.x + 1, moveBlockLocation.y},
-                                lines))
-                                ++moveBlockLocation.x;
+                            MoveRight(block);
                             break;
                         case 'n':
                             drop = true;
@@ -418,7 +382,44 @@ int main() {
                     break;
             }
         }
+}
 
+void SDLTetris::Run() {
+    if (!init)
+        return;
+
+    srand(time(NULL));
+
+    std::vector<colorBlock> blocks = {
+        colorBlock{LBlock, 0},
+        colorBlock{IBlock, 1},
+        colorBlock{SBlock, 2},
+        colorBlock{TBlock, 3},
+        colorBlock{Square, 2},
+        colorBlock{JBlock, 4},
+        colorBlock{ZBlock, 5},
+    };
+    colorBlock moveBlock = blocks[rand() % blocks.size()];
+    colorBlock nextBlock = blocks[rand() % blocks.size()];
+
+    std::vector<Label> labels = {
+        {"njkl to move", {20, 20}},
+        {"spacebar to pause", {20, 40}},
+        {"q to quit", {20, 60}},
+    };
+    Label gameovermessage = {"Game over", {centerRect.x - 20, centerRect.y}};
+    Label pausedmessage = {"Paused", {
+            playfield.x + (5 * BLOCK_SIZE) - (30),
+            playfield.y + (10 * BLOCK_SIZE) - (20),
+        }};
+
+    auto currentTicks = SDL_GetTicks();
+    auto lastMoveTicks = currentTicks;
+
+    while (!quit) {
+        handleEvents(moveBlock.block);
+
+        /*
         bool musicplaying = Mix_PlayingMusic() == 1;
         bool musicpaused = Mix_PausedMusic() == 1;
 
@@ -438,30 +439,35 @@ int main() {
                 Mix_VolumeMusic(0x20);
             }
         }
+        */
 
         // Game logic
         if (!gameOver && !paused) {
             currentTicks = SDL_GetTicks();
 
-            do {
-                if (currentTicks - lastMoveTicks > TIME_THRESHOLD || drop) {
-                    if (moveBlock.block.GetCollision({moveBlockLocation.x, moveBlockLocation.y + 1}, lines)) {
+            if (currentTicks - lastMoveTicks > TIME_THRESHOLD || drop) {
+                do {
+                    bool did = MoveDown(moveBlock.block);
+                    if (did) {
+                        lastMoveTicks = currentTicks;
+                    } else {
+                        std::cout << moveBlock.block << " collision" << std::endl;
                         drop = false;
                         if (moveBlockLocation.y < 2)
                             gameOver = true;
 
-                        lines = moveBlock.block.AddToLines(moveBlockLocation, lines, moveBlock.color);
+                        auto newlines = moveBlock.block.AddToLines(moveBlockLocation, lines, moveBlock.color);
+                        if (newlines == lines)
+                            std::cout << "wtf" << std::endl;
+                        lines = newlines;
                         score += clearFilledLines(&lines);
 
                         moveBlock = nextBlock;
                         moveBlockLocation = spawnBlockLocation;
                         nextBlock = blocks[rand() % blocks.size()];
-                    } else {
-                        ++moveBlockLocation.y;
                     }
-                    lastMoveTicks = currentTicks;
-                }
-            } while (drop);
+                } while (drop);
+            }
         }
 
         // Background
@@ -487,7 +493,7 @@ int main() {
                         BLOCK_SIZE
                     };
 
-                    if (lines[row][col] == 0 || paused) {
+                    if (lines[row][col] == -1 || paused) {
                         SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
                     } else {
                         auto color = colors[lines[row][col]];
@@ -559,6 +565,13 @@ int main() {
     SDL_DestroyWindow(win);
 
     SDL_Quit();
+}
 
+}  // namespace tetris
+
+int main() {
+    tetris::SDLTetris tetris;
+    tetris.Init();
+    tetris.Run();
     return 0;
 }

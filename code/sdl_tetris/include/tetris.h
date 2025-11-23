@@ -2,11 +2,25 @@
 #ifndef TETRIS_H_
 #define TETRIS_H_
 
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
+#include <SDL2/SDL_ttf.h>
+#include <SDL2/SDL_mixer.h>
+
 #include <iostream>
 #include <string>
 #include <vector>
 
 namespace tetris {
+
+const int SCREEN_WIDTH = 600;
+const int SCREEN_HEIGHT = 480;
+
+const int BLOCK_SIZE = 20;
+const int TIME_THRESHOLD = 200;
+
+const SDL_Color bgColor{0xBA, 0xBA, 0xBA, 0xFF};
+const SDL_Color someColor{0xA9, 0xA9, 0xA9, 0xFF};
 
 typedef std::vector<std::vector<int>> Shape;
 
@@ -23,7 +37,6 @@ class Block {
          shape{shape_} { }
 
     Shape AddToLines(Point, const Shape&, int) const;
-    // void Draw(SDL_Renderer*, const SDL_Point&) const;
     Point GetOffset() const;
     Shape GetShape() const { return shape; }
     std::string GetName() const { return name; }
@@ -46,6 +59,67 @@ const Block SBlock("SBlock", {{0, 1, 1}, {1, 1, 0}});
 const Block LBlock("LBlock", {{1, 1, 1}, {0, 0, 1}});
 const Block JBlock("JBlock", {{1, 1, 1}, {1, 0, 0}});
 const Block TBlock("TBlock", {{1, 1, 1}, {0, 1, 0}});
+
+class Label {
+ public:
+    Label() { std::cout << "Label<> default called" << std::endl; }
+    Label(const std::string& text_, SDL_Point p_) : text{text_}, p{p_} {}
+    void Draw(SDL_Renderer*, TTF_Font*);
+
+ private:
+    std::string text;
+    SDL_Point p;
+};
+
+typedef struct colorBlock {
+    Block block;
+    int color;
+} colorBlock;
+
+class SDLTetris {
+ public:
+    SDLTetris();
+
+    bool Init();
+    void Run();
+    void Pause();
+    void Quit();
+
+    bool Rotate(Block* block);
+    bool MoveDown(const Block& block);
+    bool MoveLeft(const Block& block);
+    bool MoveRight(const Block& block);
+
+ private:
+    void handleEvents(Block& block);
+
+    SDL_Window* win = NULL;
+    SDL_Renderer* renderer = NULL;
+    TTF_Font* font = NULL;
+    Mix_Music* music = NULL;
+
+
+    SDL_Rect playfield;
+    SDL_Rect centerRect;
+
+    Shape lines;
+
+    std::vector<SDL_Color> colors;
+
+    Point spawnBlockLocation;
+    Point moveBlockLocation;
+    Point nextBlockLocation;
+
+    bool init = false;
+    bool quit = false;
+    bool gameOver = false;
+    bool paused = false;
+    bool drop = false;
+
+    int score = 0;
+};
+
+void DrawBlock(SDL_Renderer*, const Block&, const SDL_Color, const Point& dst);
 
 }  // namespace tetris
 
