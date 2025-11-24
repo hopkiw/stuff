@@ -97,10 +97,11 @@ class SDLTetris {
     bool MoveLeft();
     bool MoveRight();
 
-    void DrawBlock(const Block&, const SDL_Color, const Point&);
     void Draw();
+    void DrawBlock(const Block&, const SDL_Color, const Point);
 
  private:
+    int clearFilledLines();
     void handleEvents();
     void gameLogic();
 

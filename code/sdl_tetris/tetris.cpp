@@ -187,24 +187,6 @@ void Label::Draw(SDL_Renderer* renderer, TTF_Font* font) {
     SDL_RenderCopy(renderer, textTexture, NULL, &r);
 }
 
-int clearFilledLines(Shape* lines) {
-    int deleted = 0;
-    for (auto it = lines->begin(); it != lines->end();) {
-        int blocks = std::count_if(it->begin(), it->end(), [](auto a) { return a != -1; });
-
-        if (static_cast<size_t>(blocks) == it->size()) {
-            it = lines->erase(it);
-            ++deleted;
-        } else {
-            ++it;
-        }
-    }
-    for (int i = 0; i < deleted; ++i)
-        lines->insert(lines->begin(), std::vector<int>(10, -1));
-
-    return deleted;
-}
-
 SDLTetris::SDLTetris() :
     playfield{200, 20, 10 * BLOCK_SIZE, 20 * BLOCK_SIZE},
     centerRect{
@@ -371,7 +353,26 @@ void SDLTetris::handleEvents() {
     }
 }
 
-void SDLTetris::DrawBlock(const Block& block, const SDL_Color color, const Point& dst) {
+int SDLTetris::clearFilledLines() {
+    int deleted = 0;
+    for (auto it = lines.begin(); it != lines.end();) {
+        int blocks = std::count_if(it->begin(), it->end(), [](auto a) { return a != -1; });
+
+        if (static_cast<size_t>(blocks) == it->size()) {
+            it = lines.erase(it);
+            ++deleted;
+        } else {
+            ++it;
+        }
+    }
+    for (int i = 0; i < deleted; ++i)
+        lines.insert(lines.begin(), std::vector<int>(10, -1));
+
+    return deleted;
+}
+
+
+void SDLTetris::DrawBlock(const Block& block, const SDL_Color color, const Point dst) {
     auto offset = block.GetOffset();
     auto shape = block.GetShape();
 
@@ -556,7 +557,7 @@ void SDLTetris::Run() {
                         auto newlines = moveBlock.block.block.AddToLines(moveBlock.location, lines,
                                 moveBlock.block.color);
                         lines = newlines;
-                        score += clearFilledLines(&lines);
+                        score += clearFilledLines();
 
                         moveBlock = nextBlock;
                         moveBlock.location = spawnBlockLocation;
