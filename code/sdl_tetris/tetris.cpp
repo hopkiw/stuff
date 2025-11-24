@@ -282,7 +282,7 @@ bool SDLTetris::Init() {
     return init = true;
 }
 
-bool SDLTetris::Rotate() {
+bool SDLTetris::rotate() {
     auto copy = moveBlock.block.block;
     copy.Rotate();
     if (copy.GetCollision(moveBlock.location, lines))
@@ -292,7 +292,7 @@ bool SDLTetris::Rotate() {
     return true;
 }
 
-bool SDLTetris::MoveDown() {
+bool SDLTetris::moveDown() {
     if (moveBlock.block.block.GetCollision({moveBlock.location.x, moveBlock.location.y + 1}, lines))
         return false;
 
@@ -300,7 +300,7 @@ bool SDLTetris::MoveDown() {
     return true;
 }
 
-bool SDLTetris::MoveLeft() {
+bool SDLTetris::moveLeft() {
     if (moveBlock.block.block.GetCollision({moveBlock.location.x - 1, moveBlock.location.y}, lines))
         return false;
 
@@ -308,7 +308,7 @@ bool SDLTetris::MoveLeft() {
     return true;
 }
 
-bool SDLTetris::MoveRight() {
+bool SDLTetris::moveRight() {
     if (moveBlock.block.block.GetCollision({moveBlock.location.x + 1, moveBlock.location.y}, lines))
         return false;
 
@@ -338,13 +338,13 @@ void SDLTetris::handleEvents() {
                             paused = !paused;
                         break;
                     case 'k':
-                        Rotate();
+                        rotate();
                         break;
                     case 'j':
-                        MoveLeft();
+                        moveLeft();
                         break;
                     case 'l':
-                        MoveRight();
+                        moveRight();
                         break;
                     case 'n':
                         drop = true;
@@ -374,7 +374,7 @@ int SDLTetris::clearFilledLines() {
 }
 
 
-void SDLTetris::DrawBlock(const Block& block, const SDL_Color color, const Point dst) {
+void SDLTetris::drawBlock(const Block& block, const SDL_Color color, const Point dst) {
     auto offset = block.GetOffset();
     auto shape = block.GetShape();
 
@@ -401,7 +401,7 @@ void SDLTetris::DrawBlock(const Block& block, const SDL_Color color, const Point
     }
 }
 
-void SDLTetris::Draw() {
+void SDLTetris::draw() {
     // Background
     SDL_SetRenderDrawColor(renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
     SDL_RenderClear(renderer);
@@ -475,7 +475,7 @@ void SDLTetris::Draw() {
     }
 
     // moving block
-    DrawBlock(moveBlock.block.block,
+    drawBlock(moveBlock.block.block,
             colors[moveBlock.block.color],
             {
                 playfield.x + moveBlock.location.x * BLOCK_SIZE,
@@ -490,7 +490,7 @@ void SDLTetris::Draw() {
     nextblockmessage.Draw(renderer, font);
 
     auto nextBlockColor = colors[nextBlock.block.color];
-    DrawBlock(nextBlock.block.block,
+    drawBlock(nextBlock.block.block,
             nextBlockColor,
             nextBlock.location);
 }
@@ -549,7 +549,7 @@ void SDLTetris::Run() {
 
             if (currentTicks - lastMoveTicks > TIME_THRESHOLD || drop) {
                 do {
-                    if (MoveDown()) {
+                    if (moveDown()) {
                         lastMoveTicks = currentTicks;
                     } else {
                         drop = false;
@@ -567,7 +567,7 @@ void SDLTetris::Run() {
             }
         }
 
-        Draw();
+        draw();
         // render after so Draw() can return early
         SDL_RenderPresent(renderer);
     }

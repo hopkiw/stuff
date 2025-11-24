@@ -87,19 +87,17 @@ class SDLTetris {
 
     bool Init();
     void Run();
-    void Pause();
-    void Quit();
     void Destroy();
 
-    bool Rotate();
-    bool MoveDown();
-    bool MoveLeft();
-    bool MoveRight();
-
-    void Draw();
-    void DrawBlock(const Block&, const SDL_Color, const Point);
-
  private:
+    bool rotate();
+    bool moveDown();
+    bool moveLeft();
+    bool moveRight();
+
+    void draw();
+    void drawBlock(const Block&, const SDL_Color, const Point);
+
     void addToLines();
     int clearFilledLines();
     void handleEvents();
