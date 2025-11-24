@@ -37,7 +37,6 @@ class Block {
          orig{shape_},
          shape{shape_} { }
 
-    Shape AddToLines(Point, const Shape&, int) const;
     Point GetOffset() const;
     Shape GetShape() const { return shape; }
     std::string GetName() const { return name; }
@@ -101,6 +100,7 @@ class SDLTetris {
     void DrawBlock(const Block&, const SDL_Color, const Point);
 
  private:
+    void addToLines();
     int clearFilledLines();
     void handleEvents();
     void gameLogic();

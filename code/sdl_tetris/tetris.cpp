@@ -98,22 +98,24 @@ Point Block::GetOffset() const {
     return Point{xoffset, yoffset};
 }
 
-Shape Block::AddToLines(Point p, const Shape& lines, int color) const {
-    auto offset = GetOffset();
+void SDLTetris::addToLines() {
+    auto shape = moveBlock.block.block.GetShape();
+    auto offset = moveBlock.block.block.GetOffset();
+
     auto copy = lines;
     size_t shaperows = shape.size(), shapecols = shape[0].size();
     for (size_t shaperow = 0; shaperow < shaperows; ++shaperow) {
         for (size_t shapecol = 0; shapecol < shapecols; ++shapecol) {
             if (shape[shaperow][shapecol]) {
-                int rowidx = shaperow + p.y + offset.y;
+                int rowidx = shaperow + moveBlock.location.y + offset.y;
                 if (rowidx < 0)
                     continue;  // don't draw off screen!
-                int colidx = shapecol + p.x + offset.x;
-                copy[rowidx][colidx] = color;
+                int colidx = shapecol + moveBlock.location.x + offset.x;
+                copy[rowidx][colidx] = moveBlock.block.color;
             }
         }
     }
-    return copy;
+    lines = copy;
 }
 
 bool Block::GetCollision(Point p, const Shape& lines) const {
@@ -554,9 +556,7 @@ void SDLTetris::Run() {
                         if (moveBlock.location.y < 2)
                             gameOver = true;
 
-                        auto newlines = moveBlock.block.block.AddToLines(moveBlock.location, lines,
-                                moveBlock.block.color);
-                        lines = newlines;
+                        addToLines();
                         score += clearFilledLines();
 
                         moveBlock = nextBlock;
