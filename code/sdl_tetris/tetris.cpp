@@ -12,8 +12,8 @@
 #include <utility>
 #include <vector>
 
-using std::vector;
 
+/*
 std::ostream& operator<<(std::ostream& os, const vector<int>& vec) {
     std::stringstream res;
     res << vec.front();
@@ -30,8 +30,11 @@ std::ostream& operator<<(std::ostream& os, const tetris::Block& block) {
 std::ostream& operator<<(std::ostream& os, const SDL_Point& p) {
     return os << "SDL_Point{" << p.x << "," << p.y << "}";
 }
+*/
 
 namespace tetris {
+
+using std::vector;
 
 Shape transpose(const Shape& mat) {
     int n = mat.size();
@@ -96,7 +99,6 @@ Point Block::GetOffset() const {
 }
 
 Shape Block::AddToLines(Point p, const Shape& lines, int color) const {
-    std::cout << "adding a shape with color " << color << std::endl;
     auto offset = GetOffset();
     auto copy = lines;
     size_t shaperows = shape.size(), shapecols = shape[0].size();
@@ -104,12 +106,9 @@ Shape Block::AddToLines(Point p, const Shape& lines, int color) const {
         for (size_t shapecol = 0; shapecol < shapecols; ++shapecol) {
             if (shape[shaperow][shapecol]) {
                 int rowidx = shaperow + p.y + offset.y;
-                int colidx = shapecol + p.x + offset.x;
-                if (rowidx < 0) {
-                    std::cout << "skip blocks above screen" << std::endl;
+                if (rowidx < 0)
                     continue;  // don't draw off screen!
-                }
-
+                int colidx = shapecol + p.x + offset.x;
                 copy[rowidx][colidx] = color;
             }
         }
@@ -147,17 +146,17 @@ bool Block::GetCollision(Point p, const Shape& lines) const {
 }
 
 void Block::Rotate() {
-    // hardcoded skip square
+    // skip square
     if (orig[0].size() == 2)
         return;
 
     ++rotation;
 
-    // hardcoded limit IBlock
+    // limit IBlock rotation
     if (orig[0].size() == 4 && rotation > 1)
         rotation = 0;
 
-    // limit rotations
+    // cycle rotations
     if (rotation > 3)
         rotation = 0;
 
@@ -175,35 +174,6 @@ const SDL_Color ColorGreen  {0x00, 0xFF, 0x00, 0xFF};
 const SDL_Color ColorBlue   {0x00, 0x00, 0xFF, 0xFF};
 const SDL_Color ColorYellow {0xFF, 0xFF, 0x00, 0xFF};
 
-
-void DrawBlock(SDL_Renderer* renderer, const Block& block, const SDL_Color color, const Point& dst) {
-    auto offset = block.GetOffset();
-    auto shape = block.GetShape();
-
-    int y = 0;
-    for (const auto& row : shape) {
-        int x = 0;
-        for (auto col : row) {
-            if (col != 0) {
-                SDL_Rect square = {
-                    (dst.x + offset.x * BLOCK_SIZE) + (x * BLOCK_SIZE),
-                    (dst.y + offset.y * BLOCK_SIZE) + (y * BLOCK_SIZE),
-                    BLOCK_SIZE,
-                    BLOCK_SIZE
-                };
-
-                SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
-                SDL_RenderFillRect(renderer, &square);
-                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xFF);
-                SDL_RenderDrawRect(renderer, &square);
-            }
-            ++x;
-        }
-        ++y;
-    }
-}
-
-
 void Label::Draw(SDL_Renderer* renderer, TTF_Font* font) {
     SDL_Surface* textSurface = TTF_RenderText_Solid(font, text.c_str(), {0, 0, 0, 0xFF});
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
@@ -220,7 +190,7 @@ void Label::Draw(SDL_Renderer* renderer, TTF_Font* font) {
 int clearFilledLines(Shape* lines) {
     int deleted = 0;
     for (auto it = lines->begin(); it != lines->end();) {
-        int blocks = std::count_if(it->begin(), it->end(), [](auto a) { return a == 1; });
+        int blocks = std::count_if(it->begin(), it->end(), [](auto a) { return a != -1; });
 
         if (static_cast<size_t>(blocks) == it->size()) {
             it = lines->erase(it);
@@ -230,7 +200,7 @@ int clearFilledLines(Shape* lines) {
         }
     }
     for (int i = 0; i < deleted; ++i)
-        lines->insert(lines->begin(), std::vector<int>(10, 0));
+        lines->insert(lines->begin(), std::vector<int>(10, -1));
 
     return deleted;
 }
@@ -243,6 +213,8 @@ SDLTetris::SDLTetris() :
         90,
         20
     },
+    moveBlock{},
+    nextBlock{},
     lines{Shape(20, std::vector<int>(10, -1))},
     colors{
         ColorGreen,
@@ -253,10 +225,25 @@ SDLTetris::SDLTetris() :
         ColorBlue,
         ColorPurple,
     },
-    spawnBlockLocation{5, 0},
-    moveBlockLocation{spawnBlockLocation},
-    nextBlockLocation{SCREEN_WIDTH - 100, 18 * BLOCK_SIZE} {
-}
+    labels{
+        {"njkl to move", {20, 20}},
+        {"spacebar to pause", {20, 40}},
+        {"q to quit", {20, 60}},
+    },
+    gameovermessage{
+        "Game over",
+        {
+            centerRect.x - 20,
+            centerRect.y
+        }
+    },
+    pausedmessage{
+        "Paused",
+        {
+            playfield.x + (5 * BLOCK_SIZE) - (30),
+            playfield.y + (10 * BLOCK_SIZE) - (20),
+        }
+    } { }
 
 bool SDLTetris::Init() {
     if (init)
@@ -311,77 +298,198 @@ bool SDLTetris::Init() {
     return init = true;
 }
 
-bool SDLTetris::Rotate(Block* block) {
-    auto copy = *block;
+bool SDLTetris::Rotate() {
+    auto copy = moveBlock.block.block;
     copy.Rotate();
-    if (copy.GetCollision(moveBlockLocation, lines))
+    if (copy.GetCollision(moveBlock.location, lines))
         return false;
 
-    block->Rotate();
+    moveBlock.block.block.Rotate();
     return true;
 }
 
-bool SDLTetris::MoveDown(const Block& block) {
-    if (block.GetCollision({moveBlockLocation.x, moveBlockLocation.y + 1}, lines))
+bool SDLTetris::MoveDown() {
+    if (moveBlock.block.block.GetCollision({moveBlock.location.x, moveBlock.location.y + 1}, lines))
         return false;
 
-    ++moveBlockLocation.y;
+    ++moveBlock.location.y;
     return true;
 }
 
-bool SDLTetris::MoveLeft(const Block& block) {
-    if (block.GetCollision({moveBlockLocation.x - 1, moveBlockLocation.y}, lines))
+bool SDLTetris::MoveLeft() {
+    if (moveBlock.block.block.GetCollision({moveBlock.location.x - 1, moveBlock.location.y}, lines))
         return false;
 
-    --moveBlockLocation.x;
+    --moveBlock.location.x;
     return true;
 }
 
-bool SDLTetris::MoveRight(const Block& block) {
-    if (block.GetCollision({moveBlockLocation.x + 1, moveBlockLocation.y}, lines))
+bool SDLTetris::MoveRight() {
+    if (moveBlock.block.block.GetCollision({moveBlock.location.x + 1, moveBlock.location.y}, lines))
         return false;
 
-    ++moveBlockLocation.x;
+    ++moveBlock.location.x;
     return true;
 }
 
-void SDLTetris::handleEvents(Block& block) {
+void SDLTetris::handleEvents() {
     SDL_Event e;
-        while (SDL_PollEvent(&e) != 0) {
-            switch (e.type) {
-                case SDL_QUIT:
-                    quit = true;
-                    break;
-                case SDL_KEYDOWN:
-                    switch (e.key.keysym.sym) {
-                        case 'q':
-                            if (!gameOver) {
-                                gameOver = true;
-                                paused = false;
-                            } else {
-                                quit = true;
-                            }
-                            break;
-                        case SDLK_SPACE:
-                            if (!gameOver)
-                                paused = !paused;
-                            break;
-                        case 'k':
-                            Rotate(&block);
-                            break;
-                        case 'j':
-                            MoveLeft(block);
-                            break;
-                        case 'l':
-                            MoveRight(block);
-                            break;
-                        case 'n':
-                            drop = true;
-                            break;
-                    }
-                    break;
+    while (SDL_PollEvent(&e) != 0) {
+        switch (e.type) {
+            case SDL_QUIT:
+                quit = true;
+                break;
+            case SDL_KEYDOWN:
+                switch (e.key.keysym.sym) {
+                    case 'q':
+                        if (!gameOver) {
+                            gameOver = true;
+                            paused = false;
+                        } else {
+                            quit = true;
+                        }
+                        break;
+                    case SDLK_SPACE:
+                        if (!gameOver)
+                            paused = !paused;
+                        break;
+                    case 'k':
+                        Rotate();
+                        break;
+                    case 'j':
+                        MoveLeft();
+                        break;
+                    case 'l':
+                        MoveRight();
+                        break;
+                    case 'n':
+                        drop = true;
+                        break;
+                }
+                break;
+        }
+    }
+}
+
+void SDLTetris::DrawBlock(const Block& block, const SDL_Color color, const Point& dst) {
+    auto offset = block.GetOffset();
+    auto shape = block.GetShape();
+
+    int y = 0;
+    for (const auto& row : shape) {
+        int x = 0;
+        for (auto col : row) {
+            if (col != 0) {
+                SDL_Rect square = {
+                    (dst.x + offset.x * BLOCK_SIZE) + (x * BLOCK_SIZE),
+                    (dst.y + offset.y * BLOCK_SIZE) + (y * BLOCK_SIZE),
+                    BLOCK_SIZE,
+                    BLOCK_SIZE
+                };
+
+                SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+                SDL_RenderFillRect(renderer, &square);
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xFF);
+                SDL_RenderDrawRect(renderer, &square);
+            }
+            ++x;
+        }
+        ++y;
+    }
+}
+
+void SDLTetris::Draw() {
+    // Background
+    SDL_SetRenderDrawColor(renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
+    SDL_RenderClear(renderer);
+
+    // Playfield
+    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+    SDL_RenderFillRect(renderer, &playfield);
+
+    // Playfield outline
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xFF);
+    SDL_RenderDrawRect(renderer, &playfield);
+
+    // Help message
+    for (auto label : labels)
+        label.Draw(renderer, font);
+
+    // Score message
+    Label linesmessage = {"Lines:", {
+        nextBlock.location.x - 50,
+        nextBlock.location.y - 110,
+    }};
+    linesmessage.Draw(renderer, font);
+
+    Label linecount = {std::to_string(score), {
+        nextBlock.location.x + 20,
+        nextBlock.location.y - 110,
+    }};
+    linecount.Draw(renderer, font);
+
+    if (gameOver) {
+        SDL_SetRenderDrawColor(renderer, someColor.r, someColor.g, someColor.b, someColor.a);
+        SDL_RenderFillRect(renderer, &playfield);
+
+        SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+        SDL_Rect r = {
+            centerRect.x - 20,
+            centerRect.y,
+            centerRect.w,
+            centerRect.h,
+        };
+        SDL_RenderFillRect(renderer, &r);
+
+        gameovermessage.Draw(renderer, font);
+        return;
+    }
+
+    // Tiles
+    for (int row = 0; row < 20; ++row) {
+        for (int col = 0; col < 10; ++col) {
+            SDL_Rect r = {
+                playfield.x + col * BLOCK_SIZE,
+                playfield.y + row * BLOCK_SIZE,
+                BLOCK_SIZE,
+                BLOCK_SIZE
+            };
+
+            if (lines[row][col] == -1 || paused) {
+                SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+            } else {
+                auto color = colors[lines[row][col]];
+                SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+                SDL_RenderFillRect(renderer, &r);
+                SDL_RenderDrawRect(renderer, &r);
             }
         }
+    }
+
+    if (paused) {
+        pausedmessage.Draw(renderer, font);
+        return;
+    }
+
+    // moving block
+    DrawBlock(moveBlock.block.block,
+            colors[moveBlock.block.color],
+            {
+                playfield.x + moveBlock.location.x * BLOCK_SIZE,
+                playfield.y + moveBlock.location.y * BLOCK_SIZE,
+            });
+
+    // next block
+    Label nextblockmessage = {"Next block:", {
+        nextBlock.location.x - 50,
+        nextBlock.location.y - 50,
+    }};
+    nextblockmessage.Draw(renderer, font);
+
+    auto nextBlockColor = colors[nextBlock.block.color];
+    DrawBlock(nextBlock.block.block,
+            nextBlockColor,
+            nextBlock.location);
 }
 
 void SDLTetris::Run() {
@@ -399,27 +507,19 @@ void SDLTetris::Run() {
         colorBlock{JBlock, 4},
         colorBlock{ZBlock, 5},
     };
-    colorBlock moveBlock = blocks[rand() % blocks.size()];
-    colorBlock nextBlock = blocks[rand() % blocks.size()];
 
-    std::vector<Label> labels = {
-        {"njkl to move", {20, 20}},
-        {"spacebar to pause", {20, 40}},
-        {"q to quit", {20, 60}},
-    };
-    Label gameovermessage = {"Game over", {centerRect.x - 20, centerRect.y}};
-    Label pausedmessage = {"Paused", {
-            playfield.x + (5 * BLOCK_SIZE) - (30),
-            playfield.y + (10 * BLOCK_SIZE) - (20),
-        }};
+    Point spawnBlockLocation = {5, 0};
+    Point nextBlockLocation = {SCREEN_WIDTH - 100, 18 * BLOCK_SIZE};
+
+    moveBlock = {blocks[rand() % blocks.size()], spawnBlockLocation};
+    nextBlock = {blocks[rand() % blocks.size()], nextBlockLocation};
 
     auto currentTicks = SDL_GetTicks();
     auto lastMoveTicks = currentTicks;
 
     while (!quit) {
-        handleEvents(moveBlock.block);
+        handleEvents();
 
-        /*
         bool musicplaying = Mix_PlayingMusic() == 1;
         bool musicpaused = Mix_PausedMusic() == 1;
 
@@ -439,7 +539,6 @@ void SDLTetris::Run() {
                 Mix_VolumeMusic(0x20);
             }
         }
-        */
 
         // Game logic
         if (!gameOver && !paused) {
@@ -447,124 +546,41 @@ void SDLTetris::Run() {
 
             if (currentTicks - lastMoveTicks > TIME_THRESHOLD || drop) {
                 do {
-                    bool did = MoveDown(moveBlock.block);
-                    if (did) {
+                    if (MoveDown()) {
                         lastMoveTicks = currentTicks;
                     } else {
-                        std::cout << moveBlock.block << " collision" << std::endl;
                         drop = false;
-                        if (moveBlockLocation.y < 2)
+                        if (moveBlock.location.y < 2)
                             gameOver = true;
 
-                        auto newlines = moveBlock.block.AddToLines(moveBlockLocation, lines, moveBlock.color);
-                        if (newlines == lines)
-                            std::cout << "wtf" << std::endl;
+                        auto newlines = moveBlock.block.block.AddToLines(moveBlock.location, lines,
+                                moveBlock.block.color);
                         lines = newlines;
                         score += clearFilledLines(&lines);
 
                         moveBlock = nextBlock;
-                        moveBlockLocation = spawnBlockLocation;
-                        nextBlock = blocks[rand() % blocks.size()];
+                        moveBlock.location = spawnBlockLocation;
+                        nextBlock.block = blocks[rand() % blocks.size()];
                     }
                 } while (drop);
             }
         }
 
-        // Background
-        SDL_SetRenderDrawColor(renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
-        SDL_RenderClear(renderer);
-
-        // Playfield
-        SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-        SDL_RenderFillRect(renderer, &playfield);
-
-        // Help message
-        for (auto label : labels)
-            label.Draw(renderer, font);
-
-        // Tiles
-        if (!gameOver) {
-            for (int row = 0; row < 20; ++row) {
-                for (int col = 0; col < 10; ++col) {
-                    SDL_Rect r = {
-                        playfield.x + col * BLOCK_SIZE,
-                        playfield.y + row * BLOCK_SIZE,
-                        BLOCK_SIZE,
-                        BLOCK_SIZE
-                    };
-
-                    if (lines[row][col] == -1 || paused) {
-                        SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-                    } else {
-                        auto color = colors[lines[row][col]];
-                        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
-                        SDL_RenderFillRect(renderer, &r);
-                        SDL_RenderDrawRect(renderer, &r);
-                    }
-                }
-            }
-        } else {
-            // Game over
-            SDL_SetRenderDrawColor(renderer, someColor.r, someColor.g, someColor.b, someColor.a);
-            SDL_RenderFillRect(renderer, &playfield);
-
-            SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-            SDL_Rect r = {
-                centerRect.x - 20,
-                centerRect.y,
-                centerRect.w,
-                centerRect.h,
-            };
-            SDL_RenderFillRect(renderer, &r);
-
-            gameovermessage.Draw(renderer, font);
-        }
-
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xFF);
-        SDL_RenderDrawRect(renderer, &playfield);
-
-        if (!gameOver && !paused) {
-            DrawBlock(renderer, moveBlock.block,
-                colors[moveBlock.color],
-                {
-                    playfield.x + moveBlockLocation.x * BLOCK_SIZE,
-                    playfield.y + moveBlockLocation.y * BLOCK_SIZE,
-                });
-
-            auto nextBlockColor = colors[nextBlock.color];
-            DrawBlock(renderer, nextBlock.block,
-                {nextBlockColor.r, nextBlockColor.g, nextBlockColor.b, nextBlockColor.a},
-                nextBlockLocation);
-
-            Label nextblockmessage = {"Next block:", {
-                nextBlockLocation.x - 50,
-                nextBlockLocation.y - 50,
-            }};
-            nextblockmessage.Draw(renderer, font);
-        }
-
-        Label linesmessage = {"Lines:", {
-            nextBlockLocation.x - 50,
-            nextBlockLocation.y - 110,
-        }};
-        linesmessage.Draw(renderer, font);
-
-        Label linecount = {std::to_string(score), {
-            nextBlockLocation.x + 20,
-            nextBlockLocation.y - 110,
-        }};
-        linecount.Draw(renderer, font);
-
-        if (paused)
-            pausedmessage.Draw(renderer, font);
-
+        Draw();
+        // render after so Draw() can return early
         SDL_RenderPresent(renderer);
     }
+}
+
+void SDLTetris::Destroy() {
+    if (!init)
+        return
 
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(win);
 
     SDL_Quit();
+    init = false;
 }
 
 }  // namespace tetris
@@ -573,5 +589,6 @@ int main() {
     tetris::SDLTetris tetris;
     tetris.Init();
     tetris.Run();
+    tetris.Destroy();
     return 0;
 }

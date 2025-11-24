@@ -31,6 +31,7 @@ typedef struct Point {
 
 class Block {
  public:
+     Block() : name{"default"} { };
      Block(const std::string& name_, Shape shape_) :
          name{name_},
          orig{shape_},
@@ -41,7 +42,7 @@ class Block {
     Shape GetShape() const { return shape; }
     std::string GetName() const { return name; }
 
-    bool GetCollision(Point p, const Shape&) const;
+    bool GetCollision(Point, const Shape&) const;
     void DrawText() const;
     void Rotate();
 
@@ -76,6 +77,11 @@ typedef struct colorBlock {
     int color;
 } colorBlock;
 
+typedef struct MoveBlock {
+    colorBlock block;
+    Point location;
+} MoveBlock;
+
 class SDLTetris {
  public:
     SDLTetris();
@@ -84,31 +90,36 @@ class SDLTetris {
     void Run();
     void Pause();
     void Quit();
+    void Destroy();
 
-    bool Rotate(Block* block);
-    bool MoveDown(const Block& block);
-    bool MoveLeft(const Block& block);
-    bool MoveRight(const Block& block);
+    bool Rotate();
+    bool MoveDown();
+    bool MoveLeft();
+    bool MoveRight();
+
+    void DrawBlock(const Block&, const SDL_Color, const Point&);
+    void Draw();
 
  private:
-    void handleEvents(Block& block);
+    void handleEvents();
+    void gameLogic();
 
     SDL_Window* win = NULL;
     SDL_Renderer* renderer = NULL;
     TTF_Font* font = NULL;
     Mix_Music* music = NULL;
 
-
     SDL_Rect playfield;
     SDL_Rect centerRect;
 
+    MoveBlock moveBlock;
+    MoveBlock nextBlock;
     Shape lines;
 
     std::vector<SDL_Color> colors;
-
-    Point spawnBlockLocation;
-    Point moveBlockLocation;
-    Point nextBlockLocation;
+    std::vector<Label> labels;
+    Label gameovermessage;
+    Label pausedmessage;
 
     bool init = false;
     bool quit = false;
@@ -119,7 +130,6 @@ class SDLTetris {
     int score = 0;
 };
 
-void DrawBlock(SDL_Renderer*, const Block&, const SDL_Color, const Point& dst);
 
 }  // namespace tetris
 
