@@ -68,7 +68,13 @@ int main() {
     if (!raycaster::Init())
         return 1;
 
-    std::vector<std::vector<int>> map(4, std::vector<int>(8, 0));
+    std::vector<std::vector<int>> map = {
+        {0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 1, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0},
+    };
+    // std::vector<std::vector<int>> map(4, std::vector<int>(8, 0));
     /*
     std::vector<std::vector<int>> map = {
         {0, 0, 0, 0, 0, 0, 0, 0},
@@ -158,8 +164,10 @@ int main() {
         }
 
         // draw camera on top-down grid
+        /*
         SDL_SetRenderDrawColor(raycaster::renderer, 0xFF, 0x0, 0x0, 0xFF);
         SDL_RenderDrawLine(raycaster::renderer, grid.x, grid.y, grid.x + 5 * WIDTH, grid.y + 2 * WIDTH);
+        */
 
         /*
         // camera base line
@@ -185,63 +193,74 @@ int main() {
                 // 180 - 90 - camera.angle is 90 - camera.angle aka π - camera.angle
         */
 
-        
+        // float ninety = pi / 2;
+        // std::cout << "ninety is: " << ninety << std::endl;
+        // float yhyp = sqrt(1 + tan(1.19) * tan(1.19));
+        // float xhyp = sqrt(1 + tan(.3808) * tan(.3808));
 
-        float ninety = pi / 2;
-        std::cout << "ninety is: " << ninety << std::endl;
-        float realRads = 0.38;
-        std::cout << "realRads is: " << realRads << std::endl;
-        std::cout << "positive angle tan is: " << tan(realRads) << std::endl;
-        std::cout << "other angle tan is: " << tan(ninety - realRads) << std::endl;
+        struct {
+            float x = 3;
+            float y = -2;
+        } rayDir;
 
-        float xline = tan(realRads);
-        float yline = tan(ninety - realRads);
-        if (xline < yline) {
-            std::cout << "first step along X axis" << std::endl;;
-        } else {
-            std::cout << "first step along Y axis" << std::endl;;
+        float xStepSize = sqrt(1 + (rayDir.y / rayDir.x) * (rayDir.y / rayDir.x));
+        float yStepSize = sqrt(1 + (rayDir.x / rayDir.y) * (rayDir.x / rayDir.y));
+        std::cout << "xStepSize: " << xStepSize << "," << "yStepSize: " <<  yStepSize << std::endl;
+
+        float xRayLength = xStepSize;
+        float yRayLength = yStepSize;
+
+        int mapX = 0, mapY = 3;
+        int count = 0;
+        std::cout << "start block {" << mapX << "," << mapY << "}" << std::endl;
+
+
+        float distance;
+        float xIntersection;
+        float yIntersection;
+        while (true) {
+            if (xRayLength < yRayLength) {
+                mapX += 1;
+                distance = xRayLength;
+                xRayLength += xStepSize;
+
+                xIntersection = mapX;
+                yIntersection = 3 - sqrt(distance*distance - xIntersection*xIntersection);
+            } else {
+                mapY -= 1;
+                distance = yRayLength;
+                yRayLength += yStepSize;
+
+                yIntersection = mapY;
+                xIntersection = sqrt(distance*distance - (3-yIntersection)*(3-yIntersection));
+            }
+
+            std::cout << "enter new block {" << mapX << "," << mapY << "}"
+                << " at intersection " << xIntersection << "," << yIntersection
+                << " distance is: " << distance << std::endl;
+
+            if (xIntersection >= 0 && yIntersection >= 0) {
+                SDL_Rect r = {
+                    grid.x + static_cast<int>(xIntersection * WIDTH),
+                    grid.y + static_cast<int>(yIntersection * WIDTH), 8, 8
+                };
+                SDL_SetRenderDrawColor(raycaster::renderer, 0x0, 0x0, 0xFF, 0xFF);
+                SDL_RenderFillRect(raycaster::renderer, &r);
+            }
+
+            // if (map[mapY+1][mapX+1] == 1) {
+            if (++count > 4) {
+                std::cout << "break" << std::endl;
+                SDL_SetRenderDrawColor(raycaster::renderer, 0xFF, 0x0, 0x0, 0xFF);
+                SDL_RenderDrawLine(raycaster::renderer,
+                        grid.x, grid.y + (3 * WIDTH),
+                        grid.x + xIntersection * WIDTH, grid.y + yIntersection * WIDTH);
+
+                SDL_RenderPresent(raycaster::renderer);
+                break;
+            }
         }
-
-        break;
-        /*
-        std::cout << "tan(1*pi/4) = " << std::tan(1*pi/4) << std::endl // 45°
-                  << "tan(3*pi/4) = " << std::tan(3*pi/4) << std::endl // 135°
-                  << "tan(5*pi/4) = " << std::tan(5*pi/4) << std::endl // -135°
-                  << "tan(7*pi/4) = " << std::tan(7*pi/4) << std::endl; // -45°
-        */
-
-        /*
-        int x1 = 60;
-        int y1 = 60;
-        int x2 = 300;
-        int y2 = 360;
-        int dx = (x2 - x1);
-        int dy = (y2 - y1);
-
-        int step = 0;
-        if (abs(dx) >= abs(dy))
-          step = abs(dx);
-        else
-          step = abs(dy);
-        step = abs(dy);
-
-        dx = dx / step;
-        dy = dy / step;
-        x = x1;
-        y = y1;
-        int i = 0;
-
-        while (i <= step) {
-          SDL_RenderDrawPoint(raycaster::renderer, round(x), round(y));
-          x = x + dx;
-          y = y + dy;
-          i = i + 1;
-        }
-        */
-
-
-
-        SDL_RenderPresent(raycaster::renderer);
+        // quit = true;
     }
 
     SDL_DestroyRenderer(raycaster::renderer);
