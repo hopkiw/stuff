@@ -91,8 +91,8 @@ int main() {
     const SDL_Color bgColor{0xBA, 0xBA, 0xBA, 0xFF};
 
     Point grid = {20, 20};  // rename gridpos or gridoffset or gridloc
-    // Point clickDest = {128, 59};  // upper left
-    Point clickDest = {520, 262};  // upper right
+    Point clickDest = {63, 188};  // upper left
+    // Point clickDest = {520, 262};  // upper right
     // Point clickDest = {663, 141};  // upper right
     // FPoint rayStart = {2, 4};  // use real pos, not cell
     // FPoint realrayStart = {220, 420};
@@ -101,7 +101,6 @@ int main() {
     int WIDTH = 100;
 
     bool quit = false;
-    bool print = true;
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e) != 0) {
@@ -125,8 +124,6 @@ int main() {
                     }
                     if (e.button.button == SDL_BUTTON_RIGHT) {
                         std::cout << "clicked at " << e.button.x << "," << e.button.y << std::endl;
-                        std::cout << "normalized to " << (e.button.x - grid.x) / static_cast<float>(WIDTH) << ","
-                            << (e.button.y - grid.y) / static_cast<float>(WIDTH) << std::endl;
                     }
                     break;
                 case SDL_MOUSEMOTION:
@@ -135,7 +132,7 @@ int main() {
                         clickDest.y = e.motion.y;
                     }
                     if (e.button.button == SDL_BUTTON_RIGHT) {
-                        std::cout << "clicked at " << e.button.x << "," << e.button.y << std::endl;
+                        std::cout << "dragged to " << e.button.x << "," << e.button.y << std::endl;
                     }
                     break;
             }
@@ -176,15 +173,11 @@ int main() {
         }
 
         if (clickDest.x == realrayStart.x) {
-            if (print)
-                std::cout << "vertical line" << std::endl;
             SDL_RenderPresent(raycaster::renderer);
             continue;
         }
 
         if (clickDest.y == realrayStart.y) {
-            if (print)
-                std::cout << "horizontal line" << std::endl;
             SDL_RenderPresent(raycaster::renderer);
             continue;
         }
@@ -192,22 +185,22 @@ int main() {
         float fullwidth = clickDest.x - realrayStart.x;
         float fullheight = clickDest.y - realrayStart.y;
         float angle = atan(fullheight / fullwidth);
-        if (print)
-            std::cout << "angle is " << angle << std::endl;
+
+        Point step = {1, 1};
+        if (fullwidth < 0)
+            step.x = -1;
+        if (fullheight < 0)
+            step.y = -1;
 
         FPoint rayDir = {
-            cos(angle),
-            sin(angle),
+            abs(cos(angle)) * step.x,
+            abs(sin(angle)) * step.y,
         };
-        if (print)
-            std::cout << "rayDir is " << rayDir << std::endl;
 
         FPoint stepSize = {
             sqrt(1 + (rayDir.y / rayDir.x) * (rayDir.y / rayDir.x)),
             sqrt(1 + (rayDir.x / rayDir.y) * (rayDir.x / rayDir.y)),
         };
-        if (print)
-            std::cout << "stepSize is " << stepSize << std::endl;
 
         Point mapCheck = {
             static_cast<int>(rayStart.x),
@@ -217,94 +210,44 @@ int main() {
             rayStart.x - mapCheck.x,
             rayStart.y - mapCheck.y,
         };
-        if (print)
-            std::cout << "raystartfract: " << rayStartFract << std::endl;
 
         FPoint rayLength;
 
-        Point step = {0, 0};
-        if (rayDir.x < 0) {
-            step.x = -1;
+        if (step.x < 0)
             rayLength.x = rayStartFract.x * stepSize.x;
-        } else {
-            step.x = 1;
+        else
             rayLength.x = (1 - rayStartFract.x) * stepSize.x;
-        }
 
-        if (rayDir.y < 0) {
-            step.y = -1;
+        if (step.y < 0)
             rayLength.y = rayStartFract.y * stepSize.y;
-        } else {
-            step.y = 1;
+        else
             rayLength.y = (1 - rayStartFract.y) * stepSize.y;
-        }
-
-        if (print)
-            std::cout << "rayLength is " << rayLength << std::endl;
 
         FPoint intersection = {0, 0};
-        float distance;
-        if (print)
-            std::cout << "start in cell " << mapCheck << std::endl;
+        float distance = 0;
 
         while (true) {
-            if (print)
-                std::cout << std::endl;
-
             if (rayLength.x < rayLength.y) {
                 // move horizontally
                 mapCheck.x += step.x;
                 distance = rayLength.x;  // ordering matters
                 rayLength.x += stepSize.x;
-
-                if (print) {
-                    std::cout << "move horizontally to " << mapCheck << std::endl;
-                }
-
             } else {
                 // move vertically
                 mapCheck.y += step.y;
                 distance = rayLength.y;  // ordering matters
                 rayLength.y += stepSize.y;
-
-                if (print) {
-                    std::cout << "move vertically to " << mapCheck << std::endl;
-                }
             }
-            intersection.x = rayStart.x + (rayDir.x * distance);
-            intersection.y = rayStart.y + (rayDir.y * distance);
-
-            if (print) {
-                std::cout << "intersection is: " << intersection << std::endl;
-            }
-
-            /*
-            SDL_Rect r = {
-                grid.x + static_cast<int>(intersection.x * WIDTH),
-                grid.y + static_cast<int>(intersection.y * WIDTH),
-                8,
-                8};
-            SDL_SetRenderDrawColor(raycaster::renderer, 0x0, 0xFF, 0x0, 0xFF);
-            SDL_RenderFillRect(raycaster::renderer, &r);
-            SDL_SetRenderDrawColor(raycaster::renderer, 0x0, 0x0, 0x0, 0xFF);
-            SDL_RenderDrawRect(raycaster::renderer, &r);
-            */
 
             if (mapCheck.y < 0 || mapCheck.x < 0) {
                 break;
             }
 
             if (mapCheck.y > 4 || mapCheck.x > 7) {
-                if (print)
-                    std::cout << "off map" << std::endl;
                 break;
             }
 
             if (map[mapCheck.y][mapCheck.x] == 1) {
-                if (print) {
-                    std::cout << "clickdest is: " << clickDest << std::endl;
-                    std::cout << "distance is: " << distance << std::endl;
-                }
                 break;
             }
 
@@ -313,17 +256,26 @@ int main() {
             }
         }
 
+        // Draw intersection point
+        intersection.x = rayStart.x + (rayDir.x * distance);
+        intersection.y = rayStart.y + (rayDir.y * distance);
+        SDL_Rect r = {
+            grid.x + static_cast<int>(intersection.x * WIDTH),
+            grid.y + static_cast<int>(intersection.y * WIDTH),
+            8,
+            8};
+        SDL_SetRenderDrawColor(raycaster::renderer, 0x0, 0xFF, 0x0, 0xFF);
+        SDL_RenderFillRect(raycaster::renderer, &r);
+        SDL_SetRenderDrawColor(raycaster::renderer, 0x0, 0x0, 0x0, 0xFF);
+        SDL_RenderDrawRect(raycaster::renderer, &r);
+
         // draw the line
         SDL_SetRenderDrawColor(raycaster::renderer, 0xFF, 0x0, 0x0, 0xFF);
         SDL_RenderDrawLine(raycaster::renderer,
                 realrayStart.x, realrayStart.y,
                 grid.x + (intersection.x * WIDTH), grid.y + (intersection.y * WIDTH));
 
-        if (print)
-            std::cout << "from " << realrayStart << " to " << grid.x + (intersection.x * WIDTH) << "x"
-                << grid.y + (intersection.y*WIDTH) << std::endl;
         SDL_RenderPresent(raycaster::renderer);
-        print = false;
     }
 
     SDL_DestroyRenderer(raycaster::renderer);
