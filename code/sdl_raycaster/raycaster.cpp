@@ -92,13 +92,9 @@ int main() {
 
     Point grid = {20, 20};  // rename gridpos or gridoffset or gridloc
     Point clickDest = {63, 188};  // upper left
-    // Point clickDest = {520, 262};  // upper right
-    // Point clickDest = {663, 141};  // upper right
-    // FPoint rayStart = {2, 4};  // use real pos, not cell
-    // FPoint realrayStart = {220, 420};
-    FPoint rayStart = {2.37, 4.51};  // use real pos, not cell
-    FPoint realrayStart = {237, 451};
-    int WIDTH = 100;
+    FPoint rayStart = {4.04, 2.02};
+
+    int TILESIZE = 50;
 
     bool quit = false;
     while (!quit) {
@@ -145,7 +141,7 @@ int main() {
         int x = 0, y = 0;
         for (const auto& row : map) {
             for (auto i : row) {
-                SDL_Rect r = {grid.x + x * WIDTH, grid.y + y * WIDTH, WIDTH, WIDTH};
+                SDL_Rect r = {grid.x + (x * TILESIZE), grid.y + (y * TILESIZE), TILESIZE, TILESIZE};
                 switch (i) {
                     case 0:
                         SDL_SetRenderDrawColor(raycaster::renderer, 0xFF, 0xFF, 0xFF, 0xFF);
@@ -172,18 +168,23 @@ int main() {
             ++y;
         }
 
-        if (clickDest.x == realrayStart.x) {
+        if (clickDest.x == grid.x + (rayStart.x * TILESIZE)) {
             SDL_RenderPresent(raycaster::renderer);
             continue;
         }
 
-        if (clickDest.y == realrayStart.y) {
+        if (clickDest.y == grid.y + (rayStart.y * TILESIZE)) {
             SDL_RenderPresent(raycaster::renderer);
             continue;
         }
 
-        float fullwidth = clickDest.x - realrayStart.x;
-        float fullheight = clickDest.y - realrayStart.y;
+        FPoint realDest = {
+            static_cast<float>(clickDest.x - grid.x) / TILESIZE,
+            static_cast<float>(clickDest.y - grid.y) / TILESIZE,
+        };
+
+        float fullwidth = realDest.x - rayStart.x;
+        float fullheight = realDest.y - rayStart.y;
         float angle = atan(fullheight / fullwidth);
 
         Point step = {1, 1};
@@ -250,18 +251,14 @@ int main() {
             if (map[mapCheck.y][mapCheck.x] == 1) {
                 break;
             }
-
-            if (distance > 8) {
-                break;
-            }
         }
 
         // Draw intersection point
         intersection.x = rayStart.x + (rayDir.x * distance);
         intersection.y = rayStart.y + (rayDir.y * distance);
         SDL_Rect r = {
-            grid.x + static_cast<int>(intersection.x * WIDTH),
-            grid.y + static_cast<int>(intersection.y * WIDTH),
+            grid.x + static_cast<int>(intersection.x * TILESIZE),
+            grid.y + static_cast<int>(intersection.y * TILESIZE),
             8,
             8};
         SDL_SetRenderDrawColor(raycaster::renderer, 0x0, 0xFF, 0x0, 0xFF);
@@ -272,8 +269,10 @@ int main() {
         // draw the line
         SDL_SetRenderDrawColor(raycaster::renderer, 0xFF, 0x0, 0x0, 0xFF);
         SDL_RenderDrawLine(raycaster::renderer,
-                realrayStart.x, realrayStart.y,
-                grid.x + (intersection.x * WIDTH), grid.y + (intersection.y * WIDTH));
+                grid.x + (rayStart.x * TILESIZE),
+                grid.y + (rayStart.y * TILESIZE),
+                grid.x + (intersection.x * TILESIZE),
+                grid.y + (intersection.y * TILESIZE));
 
         SDL_RenderPresent(raycaster::renderer);
     }
