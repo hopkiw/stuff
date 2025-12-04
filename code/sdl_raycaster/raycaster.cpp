@@ -91,8 +91,9 @@ int main() {
     const SDL_Color bgColor{0xBA, 0xBA, 0xBA, 0xFF};
 
     Point grid = {20, 20};  // rename gridpos or gridoffset or gridloc
+    Point raycast = {500, 20};  // rename gridpos or gridoffset or gridloc
     Point clickDest = {63, 188};  // upper left
-    FPoint rayStart = {4.04, 2.02};
+    FPoint rayStart = {3.38, 2.42};
 
     int TILESIZE = 50;
 
@@ -227,6 +228,7 @@ int main() {
         FPoint intersection = {0, 0};
         float distance = 0;
 
+        bool block = false;
         while (true) {
             if (rayLength.x < rayLength.y) {
                 // move horizontally
@@ -249,6 +251,7 @@ int main() {
             }
 
             if (map[mapCheck.y][mapCheck.x] == 1) {
+                block = true;
                 break;
             }
         }
@@ -273,6 +276,22 @@ int main() {
                 grid.y + (rayStart.y * TILESIZE),
                 grid.x + (intersection.x * TILESIZE),
                 grid.y + (intersection.y * TILESIZE));
+
+        // done with grid!
+        SDL_Rect raycastrect = {raycast.x, raycast.y, 640, 480};
+        SDL_SetRenderDrawColor(raycaster::renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+        SDL_RenderFillRect(raycaster::renderer, &raycastrect);
+
+        if (block) {
+            int rayHeight = distance * 100;
+            Point raycastcenter = {
+                raycast.x + 320,
+                raycast.y + 480,
+            };
+            SDL_SetRenderDrawColor(raycaster::renderer, 0, 0, 0, 0xFF);
+            SDL_RenderDrawLine(raycaster::renderer, raycastcenter.x, raycastcenter.y,
+                    raycastcenter.x, raycast.y + rayHeight);
+        }
 
         SDL_RenderPresent(raycaster::renderer);
     }
