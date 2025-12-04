@@ -76,6 +76,68 @@ std::ostream& operator<<(std::ostream& os, const FPoint& p) {
     return os << "{" << p.x << "," << p.y << "}";
 }
 
+float getRayLength(FPoint rayStart, FPoint rayDir, const std::vector<std::vector<int>>& map) {
+    FPoint stepSize = {
+        sqrt(1 + (rayDir.y / rayDir.x) * (rayDir.y / rayDir.x)),
+        sqrt(1 + (rayDir.x / rayDir.y) * (rayDir.x / rayDir.y)),
+    };
+
+    Point mapCheck = {
+        static_cast<int>(rayStart.x),
+        static_cast<int>(rayStart.y)
+    };
+
+    FPoint rayStartFract = {
+        rayStart.x - mapCheck.x,
+        rayStart.y - mapCheck.y,
+    };
+
+    FPoint rayLength;
+    Point step = {1, 1};
+    if (rayDir.x < 0) {
+        step.x = -1;
+        rayLength.x = rayStartFract.x * stepSize.x;
+    } else {
+        rayLength.x = (1 - rayStartFract.x) * stepSize.x;
+    }
+
+    if (rayDir.y < 0) {
+        step.y = -1;
+        rayLength.y = rayStartFract.y * stepSize.y;
+    } else {
+        rayLength.y = (1 - rayStartFract.y) * stepSize.y;
+    }
+
+    float distance = 0;
+    while (true) {
+        if (rayLength.x < rayLength.y) {
+            // move horizontally
+            mapCheck.x += step.x;
+            distance = rayLength.x;  // ordering matters
+            rayLength.x += stepSize.x;
+        } else {
+            // move vertically
+            mapCheck.y += step.y;
+            distance = rayLength.y;  // ordering matters
+            rayLength.y += stepSize.y;
+        }
+
+        if (mapCheck.y < 0 || mapCheck.x < 0) {
+            break;
+        }
+
+        if (mapCheck.y > 4 || mapCheck.x > 7) {
+            break;
+        }
+
+        if (map[mapCheck.y][mapCheck.x] == 1) {
+            break;
+        }
+    }
+    return distance;
+}
+
+
 int main() {
     if (!raycaster::Init())
         return 1;
@@ -199,66 +261,53 @@ int main() {
             abs(sin(angle)) * step.y,
         };
 
-        FPoint stepSize = {
-            sqrt(1 + (rayDir.y / rayDir.x) * (rayDir.y / rayDir.x)),
-            sqrt(1 + (rayDir.x / rayDir.y) * (rayDir.x / rayDir.y)),
-        };
+        float distance = getRayLength(rayStart, rayDir, map);
 
-        Point mapCheck = {
-            static_cast<int>(rayStart.x),
-            static_cast<int>(rayStart.y)
-        };
-        FPoint rayStartFract = {
-            rayStart.x - mapCheck.x,
-            rayStart.y - mapCheck.y,
-        };
 
-        FPoint rayLength;
+        // draw raycast window
+        SDL_Rect raycastrect = {raycast.x, raycast.y, 640, 480};
+        SDL_SetRenderDrawColor(raycaster::renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+        SDL_RenderFillRect(raycaster::renderer, &raycastrect);
 
-        if (step.x < 0)
-            rayLength.x = rayStartFract.x * stepSize.x;
-        else
-            rayLength.x = (1 - rayStartFract.x) * stepSize.x;
+        for (float i = 320, innerangle = angle; i < 340; ++i, innerangle += .007) {
+            Point istep = {1, 1};
+            if (fullwidth < 0)
+                istep.x = -1;
+            if (fullheight < 0)
+                istep.y = -1;
 
-        if (step.y < 0)
-            rayLength.y = rayStartFract.y * stepSize.y;
-        else
-            rayLength.y = (1 - rayStartFract.y) * stepSize.y;
+            FPoint irayDir = {
+                abs(cos(innerangle)) * istep.x,
+                abs(sin(innerangle)) * istep.y,
+            };
 
-        FPoint intersection = {0, 0};
-        float distance = 0;
+            float idistance = getRayLength(rayStart, irayDir, map);
 
-        bool block = false;
-        while (true) {
-            if (rayLength.x < rayLength.y) {
-                // move horizontally
-                mapCheck.x += step.x;
-                distance = rayLength.x;  // ordering matters
-                rayLength.x += stepSize.x;
-            } else {
-                // move vertically
-                mapCheck.y += step.y;
-                distance = rayLength.y;  // ordering matters
-                rayLength.y += stepSize.y;
-            }
+            FPoint iintersection = {
+                rayStart.x + (irayDir.x * idistance),
+                rayStart.y + (irayDir.y * idistance),
+            };
 
-            if (mapCheck.y < 0 || mapCheck.x < 0) {
-                break;
-            }
+            // draw the line
+            SDL_SetRenderDrawColor(raycaster::renderer, 0xFF, 0x0, 0x0, 0xFF);
+            SDL_RenderDrawLine(raycaster::renderer,
+                    grid.x + (rayStart.x * TILESIZE),
+                    grid.y + (rayStart.y * TILESIZE),
+                    grid.x + (iintersection.x * TILESIZE),
+                    grid.y + (iintersection.y * TILESIZE));
 
-            if (mapCheck.y > 4 || mapCheck.x > 7) {
-                break;
-            }
-
-            if (map[mapCheck.y][mapCheck.x] == 1) {
-                block = true;
-                break;
-            }
+            int irayHeight = idistance * 100;
+            SDL_SetRenderDrawColor(raycaster::renderer, 0, 0xFF, 0, 0xFF);
+            SDL_RenderDrawLine(raycaster::renderer,
+                    raycast.x + i, raycast.y + 480,
+                    raycast.x + i, raycast.y + irayHeight);
         }
 
         // Draw intersection point
-        intersection.x = rayStart.x + (rayDir.x * distance);
-        intersection.y = rayStart.y + (rayDir.y * distance);
+        FPoint intersection = {
+            rayStart.x + (rayDir.x * distance),
+            rayStart.y + (rayDir.y * distance),
+        };
         SDL_Rect r = {
             grid.x + static_cast<int>(intersection.x * TILESIZE),
             grid.y + static_cast<int>(intersection.y * TILESIZE),
@@ -276,22 +325,6 @@ int main() {
                 grid.y + (rayStart.y * TILESIZE),
                 grid.x + (intersection.x * TILESIZE),
                 grid.y + (intersection.y * TILESIZE));
-
-        // done with grid!
-        SDL_Rect raycastrect = {raycast.x, raycast.y, 640, 480};
-        SDL_SetRenderDrawColor(raycaster::renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-        SDL_RenderFillRect(raycaster::renderer, &raycastrect);
-
-        if (block) {
-            int rayHeight = distance * 100;
-            Point raycastcenter = {
-                raycast.x + 320,
-                raycast.y + 480,
-            };
-            SDL_SetRenderDrawColor(raycaster::renderer, 0, 0, 0, 0xFF);
-            SDL_RenderDrawLine(raycaster::renderer, raycastcenter.x, raycastcenter.y,
-                    raycastcenter.x, raycast.y + rayHeight);
-        }
 
         SDL_RenderPresent(raycaster::renderer);
     }
