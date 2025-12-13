@@ -4,6 +4,9 @@ default: run
 run: raycaster
 	./raycaster
 
+run-example: example
+	./example
+
 example: example.cpp
 	g++ ${CXXFLAGS} -g $^ -o $@ -lSDL2
 
