@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
+import configparser
+import os
+
 import urwid
-from emby_tool import get_views, get_items
+from emby_tool import EmbyTool
 
 
 class EmbyBrowser:
@@ -19,12 +22,13 @@ class EmbyBrowser:
         ("error", "dark red", "light gray"),
     ]
 
-    def __init__(self):
+    def __init__(self, url, api_key, user_id):
         self.view = None
+        self.embytool = EmbyTool(url, api_key, user_id)
         self.show_views()
 
     def show_views(self):
-        views = get_views()
+        views = self.embytool.get_views()
         body = []
         for view in views['Items']:
             button = urwid.Button(view['Name'])
@@ -44,9 +48,8 @@ class EmbyBrowser:
         else:
             self.view = frame
 
-
     def show_items(self, w, parent_id):
-        items = get_items(parent_id)
+        items = self.embytool.get_items(parent_id)
         body = []
         for item in items['Items']:
             button = urwid.Button(item['Name'])
@@ -54,17 +57,12 @@ class EmbyBrowser:
             body.append(urwid.AttrMap(button, None, focus_map='reversed'))
 
         self.listbox = urwid.ListBox(urwid.SimpleFocusListWalker(body))
-        self.view.body = urwid.AttrMap(
-                urwid.ScrollBar( self.listbox,), "body",
-        )
-
-
+        self.view.body = urwid.AttrMap(urwid.ScrollBar(self.listbox,), "body",)
 
     def main(self):
         """Run the program."""
         self.loop = urwid.MainLoop(self.view, self.palette, unhandled_input=self.unhandled_input)
         self.loop.run()
-
 
     def unhandled_input(self, k):
         # update display of focus directory
@@ -76,7 +74,11 @@ class EmbyBrowser:
 
 
 def main():
-    EmbyBrowser().main()
+    config = configparser.ConfigParser()
+    config.read(os.path.join(os.environ.get('HOME'), '.config/emby.conf'))
+
+    emby = EmbyBrowser(config['whatever']['url'], config['whatever']['api_key'], config['whatever']['user_id'])
+    emby.main()
 
 
 if __name__ == '__main__':

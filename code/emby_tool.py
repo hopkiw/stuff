@@ -2,135 +2,131 @@
 """emby stuff"""
 
 import argparse
+import configparser
 import json
+import os
 import requests
 
-URL='http://10.100.50.201:8096'
-API_KEY='4e918c4ae034400e9d16ea3b802e0053'
-USER_ID='d7b36ca114c346adb3c3f0da47e98c00'
 
+class EmbyTool:
+    def __init__(self, url, api_key, user_id):
+        self.url = url
+        self.api_key = api_key
+        self.user_id = user_id
 
-def get_items(parent_id, extra=None):
-    """get_items"""
-    path=f'/Users/{USER_ID}/Items'
-    params={'api_key': API_KEY, 'parentId': str(parent_id)}
-    if extra:
-        params.update(extra)
+    def get_items(self, parent_id, extra=None):
+        """get_items"""
+        path = f'/Users/{self.user_id}/Items'
+        params = {'api_key': self.api_key, 'parentId': str(parent_id)}
+        if extra:
+            params.update(extra)
 
-    ret = requests.get(URL + path, params=params, timeout=5)
-    return ret.json()
+        ret = requests.get(self.url + path, params=params, timeout=5)
+        return ret.json()
 
+    def get_views(self):
+        """get_views"""
+        path = f'/Users/{self.user_id}/Views'
+        params = {'api_key': self.api_key}
 
-def get_views():
-    """get_views"""
-    path = f'/Users/{USER_ID}/Views'
-    params={'api_key': API_KEY}
+        ret = requests.get(self.url + path, params=params, timeout=5)
+        return ret.json()
 
-    ret = requests.get(URL + path, params=params, timeout=5)
-    return ret.json()
+    def get_shows(self, extra=None):
+        """get_shows"""
+        params = {'Fields': 'People'}
+        if extra:
+            params.update(extra)
 
+        return self.get_items(6, params)
 
-def get_shows(extra=None):
-    """get_shows"""
-    params={'Fields': 'People'}
-    if extra:
-        params.update(extra)
+    def get_guest_stars(self, show_id):
+        """print_guest_stars"""
+        seasons = self.get_items(show_id)
+        params = {'Fields': 'People'}
 
-    return get_items(6, params)
+        res = []
+        for season in seasons['Items']:
+            episodes = self.get_items(season['Id'], params)
+            for episode in episodes['Items']:
+                gs = []
+                people = episode.get('People')
+                if not people:
+                    continue
+                for person in people:
+                    if person['Type'] == 'GuestStar':
+                        gs.append(person['Name'])
 
+                if gs:
+                    res.append(episode['Name'], gs)
 
-def get_guest_stars(show_id):
-    """print_guest_stars"""
-    seasons = get_items(show_id)
-    params = {'Fields': 'People'}
+        return res
 
-    res = []
-    for season in seasons['Items']:
-        episodes = get_items(season['Id'], params)
-        for episode in episodes['Items']:
-            gs = []
-            people = episode.get('People')
+    def get_movies(self, extra=None):
+        """query"""
+        params = {}
+        if extra:
+            params.update(extra)
+
+        return self.get_items(4, params)
+
+    def get_collections(self, ):
+        """get_collections"""
+        return self.get_items(145326)
+
+    def get_movie_years(self):
+        """get_movie_years"""
+        params = {'Fields': 'ProductionYear'}
+        movies = self.get_movies(params)
+
+        res = []
+        for movie in movies['Items']:
+            if not movie:
+                continue
+            year = movie.get('ProductionYear', 0)
+            res.append((movie['Name'], year))
+
+        return res
+
+    def get_movie_directors(self):
+        """directors"""
+        params = {'Fields': 'People'}
+        movies = self.get_movies(params)
+
+        res = []
+        for movie in movies['Items']:
+            if not movie:
+                continue
+            people = movie.get('People')
             if not people:
                 continue
             for person in people:
-                if person['Type'] == 'GuestStar':
-                    gs.append(person['Name'])
+                typ = person.get('Type')
+                if typ == 'Director':
+                    res.append((movie['Name'], person['Name']))
 
-            if gs:
-                res.append(episode['Name'], gs)
+        return res
 
-    return res
+    def get_movie_actors(self):
+        """get_movie_actors"""
+        params = {'Fields': 'People'}
+        movies = self.get_movies(params)
 
+        res = []
+        for movie in movies['Items']:
+            if not movie:
+                continue
+            people = movie.get('People')
+            if not people:
+                continue
+            actors = []
+            for person in people:
+                typ = person.get('Type')
+                if typ == 'Actor':
+                    actors.append(person['Name'])
+            res.append((movie['Name'], actors))
 
-def get_movies(extra=None):
-    """query"""
-    params={}
-    if extra:
-        params.update(extra)
-
-    return get_items(4, params)
-
-
-def get_collections():
-    """get_collections"""
-    return get_items(145326)
-
-
-def get_movie_years():
-    """get_movie_years"""
-    params={'Fields': 'ProductionYear'}
-    movies = get_movies(params)
-
-    res = []
-    for movie in movies['Items']:
-        if not movie:
-            continue
-        year = movie.get('ProductionYear', 0)
-        res.append((movie['Name'], year))
-
-    return res
-
-
-def get_movie_directors():
-    """directors"""
-    params={'Fields': 'People'}
-    movies = get_movies(params)
-
-    res = []
-    for movie in movies['Items']:
-        if not movie:
-            continue
-        people = movie.get('People')
-        if not people:
-            continue
-        for person in people:
-            typ = person.get('Type')
-            if typ == 'Director':
-                res.append((movie['Name'], person['Name']))
-
-    return res
-
-
-def get_movie_actors():
-    """get_movie_actors"""
-    params={'Fields': 'People'}
-    movies = get_movies(params)
-
-    res = []
-    for movie in movies['Items']:
-        if not movie:
-            continue
-        people = movie.get('People')
-        if not people:
-            continue
-        actors = []
-        for person in people:
-            typ = person.get('Type')
-            if typ == 'Actor':
-                actors.append(person['Name'])
-        res.append((movie['Name'], actors))
-
-    return res
+        return res
 
 
 def main():
@@ -146,21 +142,26 @@ def main():
     group.add_argument('-c', '--collections', action='store_true')
     args = parser.parse_args()
 
+    config = configparser.ConfigParser()
+    config.read(os.path.join(os.environ.get('HOME'), '.config/emby.conf'))
+
+    emby = EmbyTool(config['whatever']['url'], config['whatever']['api_key'], config['whatever']['user_id'])
+
     res = []
     if args.years:
-        res = get_movie_years()
+        res = emby.get_movie_years()
     elif args.directors:
-        res = get_movie_directors()
+        res = emby.get_movie_directors()
     elif args.actors:
-        res = get_movie_actors()
+        res = emby.get_movie_actors()
     elif args.movies:
-        res = get_movies()
+        res = emby.get_movies()
     elif args.shows:
-        res = get_shows()
+        res = emby.get_shows()
     elif args.views:
-        res = get_views()
+        res = emby.get_views()
     elif args.collections:
-        res = get_collections()
+        res = emby.get_collections()
 
     print(json.dumps(res))
 
