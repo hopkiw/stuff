@@ -215,13 +215,17 @@ int main(int argc, char* argv[]) {
 
     for (unsigned int i = 0; i < samples.size(); ++i) {
         samples[i].sample = new uint8_t[samples[i].smplen];
+        memset(samples[i].sample, 0, samples[i].smplen);
         read(fd, samples[i].sample, samples[i].smplen);
+
+        /*
         int fd2 = open("./out.bin", O_RDWR|O_CREAT);
         write(fd2, samples[i].sample, samples[i].smplen);
         close(fd2);
-        break;
+        */
+        // break;
         // possible adpcm check
-        // then load sample
+        // omg lets try to play audio
     }
 
     return 0;
