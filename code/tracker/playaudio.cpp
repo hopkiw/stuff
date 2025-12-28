@@ -13,8 +13,6 @@
 const int SAMPLE_RATE = 44100;
 const int BUFFER_SIZE = 4096;
 
-SDL_AudioDeviceID gSID = 0;
-int gID = 0;
 
 bool Init() {
     srand(time(NULL));
@@ -24,38 +22,7 @@ bool Init() {
         return false;
     }
 
-    /*
-        int freq;
-        SDL_AudioFormat format;
-        Uint8 channels;
-        Uint8 silence;
-        Uint16 samples;
-        Uint16 padding;
-        Uint32 size;
-        SDL_AudioCallback callback;
-        void *userdata;
-    */
-
-    /*
-    SDL_AudioSpec spec;
-    spec.freq = 16726;
-    spec.format = 8;
-    spec.samples = 4096;
-
-    gSID = SDL_OpenAudioDevice(NULL, 0, &spec, NULL, SDL_AUDIO_ALLOW_ANY_CHANGE);
-    */
-
     return true;
-}
-
-void callback(void *userdata, Uint8 *stream, int len) {
-    std::cout << "callback called with len " << len << std::endl;
-    int8_t* sstream = reinterpret_cast<int8_t *>(stream);
-    len /= sizeof(*sstream);
-    const int8_t* buffer = reinterpret_cast<int8_t *>(userdata);
-    for (int i = 0; i < len; i++) {
-        sstream[i] = buffer[gID++] ^ 0x80;  //  why is this needed lol
-    }
 }
 
 int main(int argc, char* argv[]) {
@@ -69,23 +36,26 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    Uint32 rawLength = 53270;
+    int rawLength = 53270;
     char* buffer = new char[rawLength];
     read(fd, buffer, rawLength);
+
+    for (int i = 0; i < rawLength; ++i)
+        buffer[i] ^= 0x80;
 
     SDL_AudioSpec rawSpec = {
         .freq = 44100,
         .format = AUDIO_S8,
         .channels = 1,
         .samples = BUFFER_SIZE,
-        .callback = callback,
-        .userdata = buffer,
     };
 
-    gSID = SDL_OpenAudioDevice(NULL, 0, &rawSpec, NULL, SDL_AUDIO_ALLOW_ANY_CHANGE);
-
+    SDL_AudioDeviceID gSID = SDL_OpenAudioDevice(NULL, 0, &rawSpec, NULL, SDL_AUDIO_ALLOW_ANY_CHANGE);
+    SDL_QueueAudio(gSID, buffer, rawLength);
     SDL_PauseAudioDevice(gSID, 0);
-    SDL_Delay(3500);
+    while (SDL_GetQueuedAudioSize(gSID) != 0)
+        SDL_Delay(30);
+    std::cout << "all done." << std::endl;
 
     return 0;
 }

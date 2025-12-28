@@ -1,3 +1,5 @@
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_audio.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,7 +10,35 @@
 #include <iostream>
 #include <vector>
 
-// stuff stolen from milytracker
+const int SAMPLE_RATE = 44100;
+const int BUFFER_SIZE = 4096;
+SDL_AudioDeviceID gSID;
+
+bool Init() {
+    srand(time(NULL));
+
+    if (SDL_Init(SDL_INIT_AUDIO|SDL_INIT_EVENTS) < 0) {
+        std::cout << "SDL could not initialize! SDL Error: " << SDL_GetError() << std::endl;
+        return false;
+    }
+
+    SDL_AudioSpec rawSpec = {
+        .freq = SAMPLE_RATE,
+        .format = AUDIO_S8,
+        .channels = 1,
+        .samples = BUFFER_SIZE,
+    };
+
+    gSID = SDL_OpenAudioDevice(NULL, 0, &rawSpec, NULL, SDL_AUDIO_ALLOW_ANY_CHANGE);
+
+    if (gSID == 0)
+        return false;
+
+    return true;
+}
+
+
+// stuff stolen from milkytracker
 
 static int getPTnumchannels(const char *id) {
     if (!memcmp(id, "M.K.", 4) || !memcmp(id, "M!K!", 4) || !memcmp(id, "FLT4", 4)) {
@@ -90,11 +120,11 @@ uint16_t readWord(int fd) {
         perror("some kind of read error");
         return 1;
     }
-    return (uint16_t)((uint16_t)c[0]+((uint16_t)c[1]<<8));
+    return (uint16_t)((uint16_t)c[0] + ((uint16_t)c[1] << 8));
 }
 
 static int mot2int(int x) {
-    return (x>>8)+((x&255)<<8);
+    return (x >> 8) + ((x & 255) << 8);
 }
 
 typedef struct Sample {
@@ -107,12 +137,27 @@ typedef struct Sample {
     int loopstart;
 } Sample;
 
+void playSample(Sample* smp) {
+    for (int i = 0; i < smp->smplen; ++i)
+        smp->sample[i] ^= 0x80;
+    SDL_QueueAudio(gSID, smp->sample, smp->smplen);
+    SDL_PauseAudioDevice(gSID, 0);
+    while (SDL_GetQueuedAudioSize(gSID) != 0)
+        SDL_Delay(30);
+    SDL_PauseAudioDevice(gSID, 1);
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cout << "provide a filename" << std::endl;
         return 1;
     }
-    std::cout << "opening cympfany.mod" << std::endl;
+
+    if (!Init()) {
+        return 1;
+    }
+
+    std::cout << "opening " << argv[1] << std::endl;
     int fd = open(argv[1], O_RDONLY);
     if (fd < 0) {
         perror("some kind of open error");
@@ -149,7 +194,8 @@ int main(int argc, char* argv[]) {
 
         Sample smp;
         smp.smplen = 2 * mot2int(readWord(fd));
-        std::cout << "got smplen: 0x" << std::hex << std::setw(4) << std::setfill('0') << smp.smplen << std::endl;
+        std::cout << "got smplen: 0x" << std::hex << std::setw(4) << std::setfill('0') << smp.smplen
+            << std::endl;
 
         smp.name = samplebuffer;
 
@@ -217,16 +263,14 @@ int main(int argc, char* argv[]) {
         samples[i].sample = new uint8_t[samples[i].smplen];
         memset(samples[i].sample, 0, samples[i].smplen);
         read(fd, samples[i].sample, samples[i].smplen);
-
-        /*
-        int fd2 = open("./out.bin", O_RDWR|O_CREAT);
-        write(fd2, samples[i].sample, samples[i].smplen);
-        close(fd2);
-        */
-        // break;
-        // possible adpcm check
-        // omg lets try to play audio
     }
+
+    for (size_t i = 0; i < samples.size(); ++i) {
+        playSample(&samples[i]);
+        SDL_Delay(30);
+    }
+
+
 
     return 0;
 }
