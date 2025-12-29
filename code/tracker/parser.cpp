@@ -145,76 +145,60 @@ void playSample(Sample* smp) {
     while (SDL_GetQueuedAudioSize(gSID) != 0)
         SDL_Delay(30);
     SDL_PauseAudioDevice(gSID, 1);
+    SDL_Delay(30);
 }
 
-int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cout << "provide a filename" << std::endl;
-        return 1;
-    }
+class Module {
+ public:
+     Module() {}
+     bool Parse(const std::string&);
 
-    if (!Init()) {
-        return 1;
-    }
+ //private:
+     std::vector<Sample> samples;
+     std::vector<char*> patterns;
+};
 
-    std::cout << "opening " << argv[1] << std::endl;
-    int fd = open(argv[1], O_RDONLY);
+bool Module::Parse(const std::string& filename) {
+    int fd = open(filename.c_str(), O_RDONLY);
     if (fd < 0) {
         perror("some kind of open error");
-        return 1;
+        return false;
     }
 
     uint8_t block[2048];
     if (read(fd, block, 2048) != 2048) {
         perror("some kind of read error");
-        return 1;
+        return false;
     }
-
-    std::cout << "type: " << identifyModule(block) << std::endl;
     lseek(fd, 0, SEEK_SET);
 
-    uint8_t buffer[20];
-    if (read(fd, buffer, 20) != 20) {
-        perror("some kind of read error");
-        return 1;
+    uint8_t namebuffer[20];
+    if (read(fd, namebuffer, 20) != 20) {
+        return false;
     }
-    std::cout << "got module name: " << buffer << std::endl;
-
-    std::vector<Sample> samples;
 
     // 31 is for MOD
     for (int i = 0; i < 31; ++i) {
         char samplebuffer[22];
         memset(samplebuffer, 0, 22);
         if (read(fd, samplebuffer, 22) != 22) {
-            perror("some kind of read error");
-            return 1;
+            return false;
         }
-        std::cout << "got sample name: " << samplebuffer << std::endl;
 
         Sample smp;
         smp.smplen = 2 * mot2int(readWord(fd));
-        std::cout << "got smplen: 0x" << std::hex << std::setw(4) << std::setfill('0') << smp.smplen
-            << std::endl;
-
         smp.name = samplebuffer;
 
         read(fd, &smp.finetune, 1);
         read(fd, &smp.vol, 1);
 
         smp.loopstart = 2 * mot2int(readWord(fd));
-        std::cout << "got loopstart: 0x" << std::hex << std::setw(4) << std::setfill('0') << smp.loopstart
-            << std::endl;
-
         smp.looplen = 2 * mot2int(readWord(fd));
-        std::cout << "got looplen: 0x" << std::hex << std::setw(4) << std::setfill('0') << smp.looplen
-            << std::endl << std::endl;
 
         if (smp.smplen > 2) {
             samples.push_back(smp);
         }
     }
-    std::cout << "this module has " << std::dec << samples.size() << " samples" << std::endl;
 
     uint8_t ordnum;
     read(fd, &ordnum, 1);
@@ -228,7 +212,6 @@ int main(int argc, char* argv[]) {
     char sig[5];
     read(fd, &sig, 4);
     sig[4] = '\0';
-    std::cout << "sig: x" << sig << "x" << std::endl;
 
     int patnum = 0;
     for (int i = 0; i < 128; ++i) {
@@ -237,40 +220,49 @@ int main(int argc, char* argv[]) {
     }
     ++patnum;
 
-    std::cout << "patnum: " << patnum << std::endl;
-
     int numChannels = getPTnumchannels(sig);
-    std::cout << "numChannels: " << numChannels << std::endl;
     int patternsize = numChannels * 64 * 4;
-    std::cout << "patternSize: " << patternsize << std::endl;
 
-    char newbuffer[1024];
-    memset(newbuffer, 0, 1024);
     for (int i = 0; i < patnum; ++i) {
-        std::cout << std::endl << "pattern " << i << " with size " << patternsize << std::endl;
-        read(fd, &newbuffer, patternsize);
-        for (int j = 0; j < patternsize; ++j) {
-            printf("%02x", newbuffer[j] & 0xFF);
-            if ((j+1) % (numChannels / 2) == 0)
-                std::cout << " ";
-            if ((j+1) % (numChannels * 4) == 0)
-                std::cout << std::endl;
+        char* buffer = new char[patternsize];
+        memset(buffer, 0, patternsize);
+        if (read(fd, buffer, patternsize) != patternsize) {
+            return false;
         }
-        std::cout << std::endl;
+        patterns.push_back(buffer);
     }
 
     for (unsigned int i = 0; i < samples.size(); ++i) {
         samples[i].sample = new uint8_t[samples[i].smplen];
         memset(samples[i].sample, 0, samples[i].smplen);
-        read(fd, samples[i].sample, samples[i].smplen);
-    }
-
-    for (size_t i = 0; i < samples.size(); ++i) {
-        playSample(&samples[i]);
-        SDL_Delay(30);
+        if (read(fd, samples[i].sample, samples[i].smplen) != samples[i].smplen) {
+            return false;
+        }
     }
 
 
+    return true;
+}
 
+int main(int argc, const char* argv[]) {
+    if (argc < 2) {
+        std::cout << "provide a filename." << std::endl;
+        return 1;
+    }
+
+    if (!Init()) {
+        std::cout << "couldn't initialize SDL" << std::endl;
+        return 1;
+    }
+
+    Module mod;
+    mod.Parse(argv[1]);
+
+    for (size_t i = 0; i < mod.samples.size(); ++i) {
+        std::cout << "playing " << mod.samples[i].name << std::endl;
+        playSample(&mod.samples[i]);
+    }
+
+    std::cout << "all done." << std::endl;
     return 0;
 }

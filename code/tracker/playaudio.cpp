@@ -1,3 +1,4 @@
+// Copyright 2025 hopkiw
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_audio.h>
 #include <fcntl.h>
@@ -23,6 +24,15 @@ bool Init() {
     }
 
     return true;
+}
+
+void callback(void* userdata, Uint8* stream, int len) {
+    std::cout << "callback called with len " << len << std::endl;
+    std::vector<int>::iterator* it = reinterpret_cast<std::vector<int>::iterator*>(userdata);
+    for (int i = 0; i < len; ++i) {
+        stream[i] = **it;
+        std::advance(*it, 1);
+    }
 }
 
 int main(int argc, char* argv[]) {
