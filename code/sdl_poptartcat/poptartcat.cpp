@@ -51,14 +51,14 @@ Block::Block(int x, int y, SDL_Color color_) :
 bool Block::Draw(SDL_Renderer* renderer) {
   int rc = SDL_RenderDrawRect(renderer, &rect);
   if (rc != 0) {
-      std::cerr << "SDL_RenderDrawRect failed: " << SDL_GetError() << std::endl;
-      return false;
+    std::cerr << "SDL_RenderDrawRect failed: " << SDL_GetError() << std::endl;
+    return false;
   }
   SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
   rc = SDL_RenderFillRect(renderer, &rect);
   if (rc != 0) {
-      std::cerr << "SDL_RenderFillRect failed: " << SDL_GetError() << std::endl;
-      return false;
+    std::cerr << "SDL_RenderFillRect failed: " << SDL_GetError() << std::endl;
+    return false;
   }
 
   return true;
@@ -96,55 +96,55 @@ Slider::Slider(std::string label_, TTF_Font* font_, int x, int y, int val_, int 
 }
 
 bool Slider::Draw(SDL_Renderer* renderer) {
-      // outline
-      SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xFF);  // black
-      SDL_RenderDrawRect(renderer, &rect);
+  // outline
+  SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xFF);  // black
+  SDL_RenderDrawRect(renderer, &rect);
 
-      // fillbar
-      SDL_SetRenderDrawColor(renderer, 0, 0xFF, 0, 0xFF);  // green
+  // fillbar
+  SDL_SetRenderDrawColor(renderer, 0, 0xFF, 0, 0xFF);  // green
 
-      float pct = static_cast<float>(val - min) / static_cast<float>(max - min);
-      int pixels = pct * rect.w;
+  float pct = static_cast<float>(val - min) / static_cast<float>(max - min);
+  int pixels = pct * rect.w;
 
-      SDL_Rect fillRect = {rect.x, rect.y, pixels, rect.h};
-      SDL_RenderFillRect(renderer, &fillRect);
+  SDL_Rect fillRect = {rect.x, rect.y, pixels, rect.h};
+  SDL_RenderFillRect(renderer, &fillRect);
 
-      // val text
-      SDL_Color textColor = {0, 0, 0, 0xFF};
-      SDL_Surface* mySurface = TTF_RenderText_Solid(font, std::to_string(val).c_str(), textColor);
-      if (mySurface == NULL) {
-        return false;
-      }
+  // val text
+  SDL_Color textColor = {0, 0, 0, 0xFF};
+  SDL_Surface* mySurface = TTF_RenderText_Solid(font, std::to_string(val).c_str(), textColor);
+  if (mySurface == NULL) {
+    return false;
+  }
 
-      SDL_Texture* myTexture = SDL_CreateTextureFromSurface(renderer, mySurface);
+  SDL_Texture* myTexture = SDL_CreateTextureFromSurface(renderer, mySurface);
 
-      SDL_Rect textRect = {
-        rect.x + rect.w + 10,
-        rect.y,
-        mySurface->w,
-        mySurface->h,
-      };
+  SDL_Rect textRect = {
+    rect.x + rect.w + 10,
+    rect.y,
+    mySurface->w,
+    mySurface->h,
+  };
 
-      SDL_RenderCopy(renderer, myTexture, NULL, &textRect);
+  SDL_RenderCopy(renderer, myTexture, NULL, &textRect);
 
-      // label text
-      mySurface = TTF_RenderText_Solid(font, label.c_str(), textColor);
-      if (mySurface == NULL) {
-        return false;
-      }
+  // label text
+  mySurface = TTF_RenderText_Solid(font, label.c_str(), textColor);
+  if (mySurface == NULL) {
+    return false;
+  }
 
-      myTexture = SDL_CreateTextureFromSurface(renderer, mySurface);
+  myTexture = SDL_CreateTextureFromSurface(renderer, mySurface);
 
-      textRect = {
-        rect.x + rect.w + 40,
-        rect.y,
-        mySurface->w,
-        mySurface->h,
-      };
+  textRect = {
+    rect.x + rect.w + 40,
+    rect.y,
+    mySurface->w,
+    mySurface->h,
+  };
 
-      SDL_RenderCopy(renderer, myTexture, NULL, &textRect);
+  SDL_RenderCopy(renderer, myTexture, NULL, &textRect);
 
-      return true;
+  return true;
 }
 
 void Slider::SetVal(int val_) {
@@ -190,36 +190,36 @@ class Poptartcat {
 };
 
 bool Poptartcat::init() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
-        return false;
-    }
+  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
+    return false;
+  }
 
-    window = SDL_CreateWindow("SDL Tutorial", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-        SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-    if (window == NULL) {
-        printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
-        return false;
-    }
+  window = SDL_CreateWindow("SDL Tutorial", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+      SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+  if (window == NULL) {
+    printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
+    return false;
+  }
 
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (renderer == NULL) {
-        printf("Renderer could not be created. SDL Error: %s\n", IMG_GetError());
-        return false;
-    }
+  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  if (renderer == NULL) {
+    printf("Renderer could not be created. SDL Error: %s\n", IMG_GetError());
+    return false;
+  }
 
-    if (TTF_Init() == -1) {
-      printf("SDL_ttf could not initialize! SDL_ttf Error: %s\n", TTF_GetError());
-      return false;
-    }
+  if (TTF_Init() == -1) {
+    printf("SDL_ttf could not initialize! SDL_ttf Error: %s\n", TTF_GetError());
+    return false;
+  }
 
-    font = TTF_OpenFont("/usr/share/fonts/truetype/terminus/TerminusTTF-4.46.0.ttf", 20);
-    if (font == NULL) {
-        printf("Font could not be created. SDL Error: %s\n", TTF_GetError());
-        return false;
-    }
+  font = TTF_OpenFont("/usr/share/fonts/truetype/terminus/TerminusTTF-4.46.0.ttf", 20);
+  if (font == NULL) {
+    printf("Font could not be created. SDL Error: %s\n", TTF_GetError());
+    return false;
+  }
 
-    return true;
+  return true;
 }
 
 void Poptartcat::close() {
