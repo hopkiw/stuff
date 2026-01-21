@@ -31,88 +31,74 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    int connect_socket;
+    int sockfd;
     for (rp = res; rp != NULL; rp = rp->ai_next) {
-        if ((connect_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
             std::cout << "Failed to create socket" << std::endl;
             return 1;
         }
-        if (connect(connect_socket, rp->ai_addr, rp->ai_addrlen) != -1)
+        if (connect(sockfd, rp->ai_addr, rp->ai_addrlen) != -1)
             break;
 
         // OTHERWISE
-        close(connect_socket);
+        close(sockfd);
     }
 
     fd_set reads, writes;
 
     char buf[1024];
-    bool datatosend = false;
-    int rres = 0;
+    int recv_bytes = 0;
     std::string msg;
 
     std::cout << "Connected. 'quit' to quit" << std::endl;
     while (true) {
         FD_ZERO(&reads);
         FD_ZERO(&writes);
-        FD_SET(connect_socket, &reads);
-        FD_SET(0, &reads);
-        if (datatosend)
-            FD_SET(connect_socket, &writes);
-        if (rres != 0)
+        FD_SET(sockfd, &reads);
+        FD_SET(STDIN_FILENO, &reads);
+        if (msg.length())
+            FD_SET(sockfd, &writes);
+        if (recv_bytes != 0)
             FD_SET(1, &writes);
 
-        struct timeval notime = {0, 0};
-        int selectval = select(connect_socket + 1, &reads, &writes, NULL, &notime);
+        int selectval = select(sockfd + 1, &reads, &writes, NULL, NULL);
         if (selectval == -1) {
             std::cout << "some kind of select error" << std::endl;
             return 1;
         }
 
-        if (selectval == 0) {
-            FD_SET(connect_socket, &reads);
-            FD_SET(0, &reads);
-            if (datatosend)
-                FD_SET(connect_socket, &writes);
-            if (rres != 0)
-                FD_SET(1, &writes);
-            select(connect_socket + 1, &reads, &writes, NULL, NULL);
-        }
-
-        if (rres != 0) {
-            if (FD_ISSET(1, &writes)) {
+        if (recv_bytes != 0) {
+            if (FD_ISSET(STDOUT_FILENO, &writes)) {
                 std::cout << buf << std::endl;
-                rres = 0;
+                recv_bytes = 0;
             }
         }
 
-        if (datatosend) {
-            if (FD_ISSET(connect_socket, &writes)) {
-                msg += "\r\n";
-                if ((send(connect_socket, msg.c_str(), msg.length(), 0)) == -1) {
-                    std::cout << "Failed to send message: " << std::endl;
-                    return 1;
-                }
-                datatosend = false;
+        if (FD_ISSET(sockfd, &writes)) {
+            msg += "\r\n";
+            if ((send(sockfd, msg.c_str(), msg.length(), 0)) == -1) {
+                std::cout << "Failed to send message: " << std::endl;
+                return 1;
             }
+            msg.clear();
         }
 
-        if (FD_ISSET(connect_socket, &reads)) {
+        if (FD_ISSET(sockfd, &reads)) {
             memset(buf, 0, 1024);
 
-            rres = recv(connect_socket, buf, 1024, 0);
-            if (rres == -1) {
+            recv_bytes = recv(sockfd, buf, 1024, 0);
+            if (recv_bytes == -1) {
                 std::cout << "Failed to send message: " << std::endl;
                 return 1;
             }
 
-            if (rres == 0) {
+            if (recv_bytes == 0) {
                 std::cout << "Connection closed by remote host." << std::endl;
                 return 0;
             }
         }
 
-        if (FD_ISSET(0, &reads)) {
+        if (FD_ISSET(STDIN_FILENO, &reads)) {
             if (std::cin.eof()) {
                 continue;
             }
@@ -120,13 +106,12 @@ int main(int argc, char** argv) {
 
             if (msg == "quit") {
                 std::cout << "quitting!" << std::endl;
-                if (close(connect_socket) != 0) {
+                if (close(sockfd) != 0) {
                     std::cout << "Failed to close socket: " << std::endl;
                     return 1;
                 }
                 break;
             }
-            datatosend = true;
         }
     }
 
