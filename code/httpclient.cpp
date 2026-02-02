@@ -9,12 +9,11 @@
 
 #include <cstring>
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <string>
 #include <vector>
 #include <algorithm>    // find
-
-// todo: add 'request' and 'response' classes
 
 namespace http {
 
@@ -112,7 +111,6 @@ class Response {
   int StatusCode() const { return status_code_; }
   void SetRecvBytes(int recv_bytes) { recv_bytes_ = recv_bytes; }
   int RecvBytes() const { return recv_bytes_; }
-  void AddHeader(const std::string&, const std::string&);
   std::vector<Header> Headers() const { return headers_; }
   std::string ToString() const;
   bool OK() const;
@@ -122,10 +120,6 @@ class Response {
   int recv_bytes_ = 0;
   std::vector<Header> headers_;
 };
-
-void Response::AddHeader(const std::string& key, const std::string& value) {
-    headers_.push_back({key, value});
-}
 
 bool Response::OK() const {
     return ((status_code_ >= 200) && (status_code_ < 300));
@@ -227,7 +221,6 @@ Response Client::Do(const Request& request) {
     std::cout << "wrote file " << newpath << std::endl;
 
     res.ParseHeaders(headers);
-    res.SetStatusCode(-1);
     res.SetRecvBytes(bodylen);
 
     return res;
@@ -262,37 +255,66 @@ int Client::Connect(const std::string& domain) {
     return 0;
 }
 
-void Response::ParseHeaders(const std::string &headers) {
-    std::vector<Header> res;
+void Response::ParseHeaders(const std::string& headers) {
+    if (headers.length() == 0)
+        return;
 
-    bool inheaders = false;
-    std::string signature;
-    for (size_t i = 0; i < headers.length();) {
-        if (headers[i] == '\r' && headers[i + 1] == '\n') {
-            inheaders = true;
-            i += 2;
-            continue;
+    typedef std::string::const_iterator iterator_t;
+
+    iterator_t status_start = headers.begin();
+    iterator_t status_end = std::find(status_start, headers.end(), '\r');
+    if (status_end == headers.end()) {
+        std::cout << "invalid response" << std::endl;
+        return;
+    }
+    std::string check = &*(status_end);
+    if (check.substr(0, 2) != "\r\n") {
+        std::cout << "invalid response" << std::endl;
+        return;
+    }
+
+    iterator_t verStart = status_start;
+    iterator_t verEnd = std::find(verStart, status_end, ' ');
+    if (verEnd == status_end) {
+        std::cout << "invalid response" << std::endl;
+        return;
+    }
+    std::string ver = std::string(verStart, verEnd);
+    if (ver != "HTTP/1.1") {
+        std::cout << "invalid HTTP version: " << ver << std::endl;
+        return;
+    }
+
+    iterator_t code_start = verEnd + 1;
+    iterator_t code_end = std::find(code_start, status_end, ' ');
+    if (code_end == status_end) {
+        std::cout << "invalid response" << std::endl;
+        return;
+    }
+    std::string code = std::string(code_start, code_end);
+    if (code.length() == 0) {
+        std::cout << "error parsing headers:" << std::string(status_start, status_end) << std::endl;
+        return;
+    }
+    status_code_ = std::stoi(code);
+
+    iterator_t this_header_start = status_end + 2;
+    for (; ;) {
+        iterator_t this_header_end = std::find(this_header_start, headers.end(), '\r');
+        iterator_t key_start = this_header_start;
+        iterator_t key_end = std::find(this_header_start, this_header_end, ':');
+        if (key_end == this_header_end) {
+            std::cout << "invalid header format: " << std::endl;
+            return;
         }
-
-        if (!inheaders) {
-            signature += headers[i];
-            ++i;
-            continue;
+        std::string key(key_start, key_end);
+        iterator_t value_start = key_end + 2;
+        std::string value(value_start, this_header_end);
+        headers_.push_back({key, value});
+        this_header_start = this_header_end + 2;
+        if (this_header_end == headers.end()) {
+            break;
         }
-
-        std::string key;
-        for (; i < headers.length() && headers[i] != ':'; ++i) {
-            key += headers[i];
-        }
-        i += 2;
-
-        std::string value;
-        for (; i < headers.length() && headers[i] != '\r'; ++i) {
-            value += headers[i];
-        }
-
-        res.push_back({key, value});
-        i += 2;
     }
 }
 
@@ -322,8 +344,16 @@ int main(int argc, char** argv) {
 
     auto headers = response.Headers();
     std::cout << "got " << headers.size() << " headers:" << std::endl;
+    size_t longest = 0;
     for (auto hdr : headers) {
-        std::cout << "Key: \"" << hdr.first << "\", Value: \"" << hdr.second << "\"" << std::endl;
+        if (hdr.first.length() > longest)
+            longest = hdr.first.length();
+    }
+    for (auto hdr : headers) {
+        std::cout << "Key: ";
+
+        std::cout << std::left << std::setw(longest + 3) << ("\"" + hdr.first + "\"");
+        std::cout << "Value: " << "\"" << hdr.second << "\"" << std::endl;
     }
 
     return 0;
