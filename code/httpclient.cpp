@@ -190,15 +190,15 @@ Response Client::Do(const Request& request) {
             break;
         }
         if (body == -1) {
-            for (int i = 0; i < recv_bytes - 4; ++i) {
-                if (buf[i] == '\r'
-                        && buf[i + 1] == '\n'
-                        && buf[i + 2] == '\r'
-                        && buf[i + 3] == '\n') {
+            for (int i = 0; i < recv_bytes - 2; ++i) {
+                headers += buf[i];
+                if (buf[i] == '\n'
+                        && buf[i - 1] == '\r'
+                        && buf[i + 1] == '\r'
+                        && buf[i + 2] == '\n') {
                     body = i + 4;
                     break;
                 }
-                headers += buf[i];
             }
         }
 
@@ -273,19 +273,19 @@ void Response::ParseHeaders(const std::string& headers) {
         return;
     }
 
-    iterator_t verStart = status_start;
-    iterator_t verEnd = std::find(verStart, status_end, ' ');
-    if (verEnd == status_end) {
+    iterator_t version_start = status_start;
+    iterator_t version_end = std::find(version_start, status_end, ' ');
+    if (version_end == status_end) {
         std::cout << "invalid response" << std::endl;
         return;
     }
-    std::string ver = std::string(verStart, verEnd);
+    std::string ver = std::string(version_start, version_end);
     if (ver != "HTTP/1.1") {
         std::cout << "invalid HTTP version: " << ver << std::endl;
         return;
     }
 
-    iterator_t code_start = verEnd + 1;
+    iterator_t code_start = version_end + 1;
     iterator_t code_end = std::find(code_start, status_end, ' ');
     if (code_end == status_end) {
         std::cout << "invalid response" << std::endl;
@@ -298,23 +298,22 @@ void Response::ParseHeaders(const std::string& headers) {
     }
     status_code_ = std::stoi(code);
 
-    iterator_t this_header_start = status_end + 2;
+    iterator_t header_start = status_end + 2;
     for (; ;) {
-        iterator_t this_header_end = std::find(this_header_start, headers.end(), '\r');
-        iterator_t key_start = this_header_start;
-        iterator_t key_end = std::find(this_header_start, this_header_end, ':');
-        if (key_end == this_header_end) {
-            std::cout << "invalid header format: " << std::endl;
+        iterator_t header_end = std::find(header_start, headers.end(), '\n');
+        iterator_t key_start = header_start;
+        iterator_t key_end = std::find(header_start, header_end, ':');
+        if (key_end == header_end) {  // ':' not found
+            std::cout << "invalid header (no field separator)" << std::endl;
             return;
         }
         std::string key(key_start, key_end);
-        iterator_t value_start = key_end + 2;
-        std::string value(value_start, this_header_end);
+        std::string value(key_end + 2, header_end - 1);
         headers_.push_back({key, value});
-        this_header_start = this_header_end + 2;
-        if (this_header_end == headers.end()) {
+        if (header_end == headers.end())
             break;
-        }
+
+        header_start = header_end + 1;
     }
 }
 
