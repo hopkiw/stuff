@@ -7,96 +7,141 @@
 #include <string>
 #include <vector>
 
-// TODO: strings
-// TODO: repeated whitespace
-// TODO: more than two commands
+// TODO: support strings
 
-void run_two_programs(const std::vector<std::string>& words1, const std::vector<std::string>& words2) {
-    int pipefd[2];
-    pid_t cpid, cpid2;
+typedef std::vector<std::string> Args;
 
-    if (pipe(pipefd) == -1) {
-        perror("pipe");
-        return;
-    }
-
-    cpid2 = fork();
-    if (cpid2 == -1) {
-        perror("fork");
-        return;
-    }
-    if (cpid2 == 0) {
-        dup2(pipefd[0], STDIN_FILENO);
-        close(pipefd[0]);
-        close(pipefd[1]);
-
-        char * *argv = new char * [words2.size()];
-        for (size_t i = 0; i < words2.size(); ++i) {
-            argv[i] = const_cast<char*>(words2[i].c_str());
-        }
-        int ret = execve(words2[0].c_str(), argv, NULL);
-        if (ret == -1) {
-            perror(std::string("execve" + std::to_string(getpid())).c_str());
-            return;
-        }
-        std::cout << "should be impossible, ret is:" << ret << std::endl;
-        return;
-    }
-
-    cpid = fork();
+int run_program(const Args& args) {
+    int cpid = fork();
     if (cpid == -1) {
         perror("fork");
-        return;
+        return 1;
     }
     if (cpid == 0) {
-        dup2(pipefd[1], 1);
-        dup2(pipefd[1], 2);
-        close(pipefd[0]);
-        close(pipefd[1]);
-
-        char * *argv = new char * [words1.size()];
-        for (size_t i = 0; i < words1.size(); ++i) {
-            argv[i] = const_cast<char*>(words1[i].c_str());
+        char** argv = new char* [args.size()];
+        for (size_t i = 0; i < args.size(); ++i) {
+            argv[i] = const_cast<char*>(args[i].c_str());
         }
-        int ret = execve(words1[0].c_str(), argv, NULL);
+        int ret = execve(args[0].c_str(), argv, NULL);
         if (ret == -1) {
             perror(std::string("execve" + std::to_string(getpid())).c_str());
-            return;
+            return 1;
         }
-        std::cout << "should be impossible, ret is:" << ret << std::endl;
-        return;
+        std::cout << "execve failed, ret is:" << ret << std::endl;
+        return 1;
     }
-
-    close(pipefd[0]);
-    close(pipefd[1]);
 
     int wstatus;
     int ret = waitpid(cpid, &wstatus, 0);
     if (ret == -1) {
         perror("waitpid");
-        return;
+        return 1;
     }
-    std::cout << "pid " << ret << "(" << words1[0] << ") exited with status: ";
-    if (wstatus != 0 && WIFEXITED(wstatus))
-        std::cout << WEXITSTATUS(wstatus) << std::endl;
-    else
-        std::cout << 0 << std::endl;
 
+    return 0;
+}
 
-    ret = waitpid(cpid2, &wstatus, 0);
-    if (ret == -1) {
-        perror("waitpid");
-        return;
+int run_programs(const std::vector<Args>& programs) {
+    std::vector<int> pids;
+    std::vector<int> pipes;
+    for (size_t i = 0; i < programs.size() - 1; ++i) {
+        int pipefd[2];
+        if (pipe(pipefd) == -1) {
+            perror("pipe");
+            return 1;
+        }
+        pipes.push_back(pipefd[0]);
+        pipes.push_back(pipefd[1]);
     }
-    std::cout << "pid " << ret << "(" << words2[0] << ") exited with status: ";
-    if (wstatus != 0 && WIFEXITED(wstatus))
-        std::cout << WEXITSTATUS(wstatus) << std::endl;
-    else
-        std::cout << 0 << std::endl;
+
+    int pipe_idx = 0;
+    for (auto it = programs.begin(); it != programs.end(); ++it) {
+        auto program = *it;
+        int cpid = fork();
+        if (cpid == -1) {
+            perror("fork");
+            return 1;
+        }
+        if (cpid == 0) {
+            if (it == programs.begin()) {
+                dup2(pipes[1], STDOUT_FILENO);
+            } else if ((it + 1) == programs.end()) {
+                int idx = pipes.size() - 2;
+                dup2(pipes[idx], STDIN_FILENO);
+            } else {
+                dup2(pipes[pipe_idx + 3], STDOUT_FILENO);
+                dup2(pipes[pipe_idx], STDIN_FILENO);
+            }
+            for (auto pipefd : pipes)
+                close(pipefd);
+
+            char** argv = new char* [program.size()];
+            for (size_t i = 0; i < program.size(); ++i) {
+                argv[i] = const_cast<char*>(program[i].c_str());
+            }
+            int ret = execve(program[0].c_str(), argv, NULL);
+            if (ret == -1) {
+                perror(std::string("execve" + std::to_string(getpid())).c_str());
+                return 1;
+            }
+            std::cout << "execve failed, ret is:" << ret << std::endl;
+            return 1;
+        }
+        pids.push_back(cpid);
+        if (it != programs.begin() && (it + 1) != programs.end())
+            pipe_idx += 2;
+    }
+
+    for (auto pipefd : pipes) {
+        close(pipefd);
+    }
+
+    for (auto rit = pids.rbegin(); rit != pids.rend(); ++rit) {
+        // auto pid = *rit;
+        int wstatus;
+        int ret = waitpid(-1, &wstatus, 0);
+        if (ret == -1) {
+            perror("waitpid");
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 int main() {
-    run_two_programs({"/usr/bin/ls", "/"}, {"/usr/bin/grep", "l"});
+    for (; ;) {
+        std::string input;
+        std::cout << ": ";
+        std::getline(std::cin, input);
+
+        std::vector<Args> programs;
+        {
+            Args words;
+            std::string word;
+            for (size_t i = 0; i < input.length(); ++i) {
+                if (input[i] == ' ') {
+                    if (word == "|") {
+                        programs.push_back(words);
+                        words.clear();
+                        word.clear();
+                        continue;
+                    }
+                    words.push_back(word);
+                    word.clear();
+                    continue;
+                }
+                word += input[i];
+            }
+            words.push_back(word);
+            programs.push_back(words);
+        }
+        if (programs.size() == 1) {
+            run_program(programs[0]);
+        } else {
+            run_programs(programs);
+        }
+    }
 
     return 0;
 }
