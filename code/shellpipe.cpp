@@ -1,34 +1,60 @@
 // Copyright 2026 hopkiw
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
 #include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
 
 // TODO: support strings
+// TODO: path lookups in run_programs
+// TODO: error if receiving EOF in main loop
 
 typedef std::vector<std::string> Args;
 
-int run_program(const Args& args) {
+std::string find_program(const std::string& program, const std::vector<std::string>& paths) {
+    std::string res = program;
+    for (const auto& path : paths) {
+        std::string candidate = path + "/" + program;
+        struct stat sb;
+        if (lstat(candidate.c_str(), &sb) == 0) {
+            res = candidate;
+            break;
+        }
+    }
+    return res;
+}
+
+int run_program(const Args& args, const std::vector<std::string>& paths) {
+    auto program = args[0];
+    if (program[0] != '/') {
+        program = find_program(program, paths);
+        if (program[0] != '/') {
+            std::cout << "unable to find program: " << program << std::endl;
+            return 1;
+        }
+    }
     int cpid = fork();
     if (cpid == -1) {
         perror("fork");
         return 1;
     }
     if (cpid == 0) {
-        char** argv = new char* [args.size()];
+        char** argv = new char* [args.size() + 1];
         for (size_t i = 0; i < args.size(); ++i) {
             argv[i] = const_cast<char*>(args[i].c_str());
         }
-        int ret = execve(args[0].c_str(), argv, NULL);
+        argv[args.size()] = NULL;
+        int ret = execve(program.c_str(), argv, NULL);
         if (ret == -1) {
             perror(std::string("execve" + std::to_string(getpid())).c_str());
-            return 1;
+            exit(1);
         }
         std::cout << "execve failed, ret is:" << ret << std::endl;
-        return 1;
+        exit(1);
     }
 
     int wstatus;
@@ -41,7 +67,9 @@ int run_program(const Args& args) {
     return 0;
 }
 
-int run_programs(const std::vector<Args>& programs) {
+int run_programs(const std::vector<Args>& programs, const std::vector<std::string>& paths) {
+    std::cout << "using " << paths[0] << std::endl;
+
     std::vector<int> pids;
     std::vector<int> pipes;
     for (size_t i = 0; i < programs.size() - 1; ++i) {
@@ -75,17 +103,18 @@ int run_programs(const std::vector<Args>& programs) {
             for (auto pipefd : pipes)
                 close(pipefd);
 
-            char** argv = new char* [program.size()];
+            char** argv = new char* [program.size() + 1];
             for (size_t i = 0; i < program.size(); ++i) {
                 argv[i] = const_cast<char*>(program[i].c_str());
             }
+            argv[program.size()] = NULL;
             int ret = execve(program[0].c_str(), argv, NULL);
             if (ret == -1) {
                 perror(std::string("execve" + std::to_string(getpid())).c_str());
-                return 1;
+                exit(1);
             }
             std::cout << "execve failed, ret is:" << ret << std::endl;
-            return 1;
+            exit(1);
         }
         pids.push_back(cpid);
         if (it != programs.begin() && (it + 1) != programs.end())
@@ -109,7 +138,29 @@ int run_programs(const std::vector<Args>& programs) {
     return 0;
 }
 
-int main() {
+int main(int argc, char* argv[], char* env[]) {
+    if (argc == 1000)
+        std::cout << "using argv" << argv[0] << env[0];
+
+    std::string path;
+    for (char** var = env; *var != nullptr; ++var) {
+        std::string field(*var);
+        if (field.substr(0, 5) == "PATH=") {
+            path = field.substr(5);
+            break;
+        }
+    }
+
+    std::vector<std::string> paths;
+    for (size_t i = 0, end = 0; end != std::string::npos; i = end + 1) {
+        end = path.find(':', i);
+        std::string p = path.substr(i, end - i);
+        paths.push_back(p);
+        if (paths.size() > 26) {
+            exit(2);
+        }
+    }
+
     for (; ;) {
         std::string input;
         std::cout << ": ";
@@ -137,9 +188,9 @@ int main() {
             programs.push_back(words);
         }
         if (programs.size() == 1) {
-            run_program(programs[0]);
+            run_program(programs[0], paths);
         } else {
-            run_programs(programs);
+            run_programs(programs, paths);
         }
     }
 
