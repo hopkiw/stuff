@@ -68,11 +68,22 @@ int run_program(const Args& args, const std::vector<std::string>& paths) {
 }
 
 int run_programs(const std::vector<Args>& programs, const std::vector<std::string>& paths) {
-    std::cout << "using " << paths[0] << std::endl;
+    std::vector<Args> programs_ = programs;
+    for (auto& ref : programs_) {
+        auto program = ref[0];
+        if (program[0] != '/') {
+            program = find_program(program, paths);
+            if (program[0] != '/') {
+                std::cout << "unable to find program: " << program << std::endl;
+                return 1;
+            }
+            ref[0] = program;
+        }
+    }
 
     std::vector<int> pids;
     std::vector<int> pipes;
-    for (size_t i = 0; i < programs.size() - 1; ++i) {
+    for (size_t i = 0; i < programs_.size() - 1; ++i) {
         int pipefd[2];
         if (pipe(pipefd) == -1) {
             perror("pipe");
@@ -83,7 +94,7 @@ int run_programs(const std::vector<Args>& programs, const std::vector<std::strin
     }
 
     int pipe_idx = 0;
-    for (auto it = programs.begin(); it != programs.end(); ++it) {
+    for (auto it = programs_.begin(); it != programs_.end(); ++it) {
         auto program = *it;
         int cpid = fork();
         if (cpid == -1) {
@@ -91,9 +102,9 @@ int run_programs(const std::vector<Args>& programs, const std::vector<std::strin
             return 1;
         }
         if (cpid == 0) {
-            if (it == programs.begin()) {
+            if (it == programs_.begin()) {
                 dup2(pipes[1], STDOUT_FILENO);
-            } else if ((it + 1) == programs.end()) {
+            } else if ((it + 1) == programs_.end()) {
                 int idx = pipes.size() - 2;
                 dup2(pipes[idx], STDIN_FILENO);
             } else {
@@ -117,7 +128,7 @@ int run_programs(const std::vector<Args>& programs, const std::vector<std::strin
             exit(1);
         }
         pids.push_back(cpid);
-        if (it != programs.begin() && (it + 1) != programs.end())
+        if (it != programs_.begin() && (it + 1) != programs_.end())
             pipe_idx += 2;
     }
 
@@ -138,12 +149,12 @@ int run_programs(const std::vector<Args>& programs, const std::vector<std::strin
     return 0;
 }
 
-int main(int argc, char* argv[], char* env[]) {
+int main(int argc, const char* argv[], const char* env[]) {
     if (argc == 1000)
         std::cout << "using argv" << argv[0] << env[0];
 
     std::string path;
-    for (char** var = env; *var != nullptr; ++var) {
+    for (const char** var = env; *var != nullptr; ++var) {
         std::string field(*var);
         if (field.substr(0, 5) == "PATH=") {
             path = field.substr(5);
