@@ -173,9 +173,17 @@ int main(int argc, const char* argv[], const char* env[]) {
     }
 
     for (; ;) {
+        if (std::cin.eof()) {
+            return 0;
+        }
+
         std::string input;
         std::cout << ": ";
         std::getline(std::cin, input);
+
+        if (std::cin.eof()) {
+            return 0;
+        }
 
         std::vector<Args> programs;
         {
@@ -198,6 +206,7 @@ int main(int argc, const char* argv[], const char* env[]) {
             words.push_back(word);
             programs.push_back(words);
         }
+
         if (programs.size() == 1) {
             run_program(programs[0], paths);
         } else {
